@@ -23,6 +23,9 @@ _lock = threading.Lock()          # model khong an toan da luong -> cham diem tu
 BACKENDS = [b.strip() for b in os.environ.get("KIS_BACKENDS", "siglip,hybrid,api").split(",") if b.strip()]
 FETCH    = os.environ.get("KIS_FETCH", "0") not in ("0", "", "false", "False")
 VIDEODIR = os.environ.get("KIS_VIDEO_DIR", os.path.join(ROOT, "videos"))
+# Tren host CPU, mot request qua lon se chay lau hon gateway timeout. Chan truoc
+# va noi ro cach thu nho, thay vi de nguoi dung ngoi cho roi an loi 502.
+MAXFRAMES = int(os.environ.get("KIS_MAX_FRAMES", "0"))     # 0 = khong gioi han
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -50,7 +53,8 @@ class Handler(SimpleHTTPRequestHandler):
             allowed = [b for b in BACKENDS if b == "siglip" or api_ok]
             return self._json(200, {"ok": True, "videos": vids, "model": score_query.MODEL_ID,
                                     "api": api_ok, "api_model": os.environ.get("KIS_API_MODEL", ""),
-                                    "backends": allowed, "fetch": FETCH})
+                                    "backends": allowed, "fetch": FETCH,
+                                    "max_frames": MAXFRAMES})
         return super().do_GET()
 
     def do_POST(self):
@@ -73,7 +77,14 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(400, {"ok": False,
                                         "error": f"backend '{backend}' khong duoc bat tren server nay"})
             topk    = int(req.get("topk", 20))
-            sys.stderr.write(f"\n[score] {len(rows)} dong · window ±{window} · step {step} · query={query!r}\n")
+            per = (window * 2 // step + 1) if window > 0 else 1
+            nframes = len(rows) * per
+            if MAXFRAMES and nframes > MAXFRAMES:
+                return self._json(400, {"ok": False, "error":
+                    f"Yeu cau {nframes} frame, vuot gioi han {MAXFRAMES} cua server nay. "
+                    f"Thu nho cua so (vd ±{step}) hoac tang buoc de giam so frame."})
+            sys.stderr.write(f"\n[score] {len(rows)} dong · {nframes} frame · window ±{window} "
+                             f"· step {step} · backend={backend} · query={query!r}\n")
 
             with _lock:
                 res, offsets = score_query.run(rows, query, window, step, VIDEODIR,

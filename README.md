@@ -215,3 +215,16 @@ tiền API**, và ngủ sau 48h chứ không phải 15 phút.
 
 Khoá API (nếu muốn dùng chế độ rerank) đặt ở **Settings → Variables and secrets**
 của Space, không đưa `.env` lên.
+
+### Lưu ý khi chạy trên Space
+
+Space free chạy **CPU**, không có MPS — chấm điểm chậm hơn máy bạn nhiều lần.
+Vì vậy Dockerfile đặt `KIS_MAX_FRAMES=350`: request lớn hơn bị từ chối kèm lời
+nhắc thu nhỏ cửa sổ, thay vì để bạn ngồi chờ rồi ăn gateway timeout.
+
+Với 100 dòng thì cửa sổ `±30 bước 30` (300 frame) là vừa. Muốn quét cửa sổ rộng
+hơn thì chạy ở máy bằng `python3 serve.py` — ở đó không có giới hạn.
+
+**Nếu bạn đặt khoá API làm secret trên Space public:** ai vào cũng bấm chấm điểm
+được và tiêu credit của bạn. Hoặc để Space private, hoặc đừng đặt khoá API lên đó
+và chỉ dùng SigLIP (vốn miễn phí và là lý do chọn Spaces).

@@ -13,7 +13,10 @@ ENV HOME=/home/user PATH=/home/user/.local/bin:$PATH \
 
 WORKDIR /home/user/app
 COPY --chown=user requirements-local.txt requirements.txt ./
-RUN pip install --no-cache-dir --user -r requirements-local.txt
+# torch ban CPU: mac dinh tren Linux pip keo ve ban CUDA keo theo ~2-3GB driver
+# nvidia hoan toan vo dung tren Space chay CPU, va de lam build qua han.
+RUN pip install --no-cache-dir --user torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir --user -r requirements-local.txt
 
 COPY --chown=user *.py index.html kis-viewer.html media-index.json ./
 
@@ -25,7 +28,8 @@ ENV HOST=0.0.0.0 \
     KIS_BACKENDS=siglip,hybrid,api \
     KIS_FETCH=1 \
     KIS_VIDEO_DIR=/home/user/videos \
-    KIS_VIDEO_CACHE_MB=8000
+    KIS_VIDEO_CACHE_MB=8000 \
+    KIS_MAX_FRAMES=350
 
 EXPOSE 7860
 CMD ["python3", "serve.py"]

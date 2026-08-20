@@ -304,6 +304,7 @@ let autoplay = localStorage.getItem('kis-autoplay') === '1';
 let scores = {};             // chi so dong -> {p, bestOff, bestP, meanP, cos}
 let maxP   = 0;              // diem cao nhat, dung de to mau tuong doi
 let apiOn  = false;          // co server local de cham diem khong
+let maxFrames = 0;           // gioi han so frame moi request cua server (0 = khong gioi han)
 
 let player = null, apiReady = false, loadedVid = null, queued = null;
 
@@ -618,6 +619,11 @@ async function runScoring(){
   const stp = Math.max(1, parseInt($('#stp').value) || 30);
   const nf  = entries.length * (win > 0 ? Math.floor(win*2/stp) + 1 : 1);
   const be  = $('#backend').value;
+  if(maxFrames && nf > maxFrames){
+    setQ('cần ' + nf + ' frame, server chỉ cho tối đa ' + maxFrames
+         + ' — giảm cửa sổ hoặc tăng bước', 'err');
+    return;
+  }
   if(be !== 'siglip' && !confirm('Chế độ "' + $('#backend').selectedOptions[0].text
       + '" gọi API tính phí.\nƯớc tính ' + (be === 'api' ? '~' + nf : '~140')
       + ' request. Tiếp tục?')) return;
@@ -712,6 +718,7 @@ fetch('/api/status').then(r => r.json()).then(j => {
   if(!j.ok) return;
   apiOn = true;
   document.body.classList.add('api');
+  maxFrames = j.max_frames || 0;
   const allowed = j.backends || (j.api ? ['siglip','hybrid','api'] : ['siglip']);
   [...$('#backend').options].forEach(o => o.disabled = !allowed.includes(o.value));
   if(!allowed.includes($('#backend').value)) $('#backend').value = allowed[0] || 'siglip';
