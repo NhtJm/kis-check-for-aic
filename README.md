@@ -296,3 +296,42 @@ service account, rồi gắn vào service. Khoá không đi qua image, không v�
 **Cân nhắc trước khi bật:** service đang public, nên ai vào cũng bấm chấm điểm
 được và tiêu credit của bạn. Nếu chỉ cần SigLIP (vốn miễn phí và đủ dùng) thì
 đừng gắn khoá lên đó — chạy rerank ở máy khi cần.
+
+## Chọn model cho rerank: đo thật, đừng đoán
+
+Trực giác "chọn model nhẹ cho rẻ" **sai với ảnh**. `gpt-4o-mini` nhân token ảnh
+lên ~33 lần để bù giá token rẻ, nên cuối cùng đắt hơn cả `gpt-4o`.
+
+Số đo thật, một frame 512px, `detail:"low"`, chấm frame có phi hành gia áo đen:
+
+| Model | token/ảnh | $/frame | 700 frame | Chấm |
+|---|---|---|---|---|
+| **gpt-4o** | **117** | **$0.00034** | **$0.24** | 90 ✓ |
+| gpt-4o-mini | 2865 | $0.00043 | $0.30 | 90 ✓ |
+| gpt-4o-mini (detail auto) | 8532 | $0.00128 | $0.90 | 90 ✓ |
+| gpt-4.1-mini | 265 | $0.00011 | $0.08 | 30 ✗ |
+| gpt-4.1-nano | 386 | $0.00004 | $0.03 | 10 ✗ |
+
+Hai kết luận: `detail:"low"` giảm 3 lần chi phí mà đáp án không đổi (đã bật mặc
+định trong `api_backend.py`), và hai model nano/mini rẻ thật nhưng **chấm sai** —
+cho 30 và 10 đúng cái frame mà gpt-4o và gpt-4o-mini đều chấm 90.
+
+Kiểm tra trước khi chấm cả bộ, chỉ tốn một lệnh gọi:
+
+```bash
+python3 deploy/test_api.py           # gọi đúng đường chạy thật, in usage + chi phí
+python3 deploy/test_api.py --list    # xem model nào dùng được
+```
+
+### Rerank có tác dụng thật
+
+Đo trên submission 100 dòng, query tiếng Việt, `--rerank api --rerank-topk 20`:
+
+| | Trước rerank (SigLIP) | Sau rerank (gpt-4o) |
+|---|---|---|
+| `L21_V015,25725` (frame đúng) | hạng 2 | **hạng 1**, chấm 1.00 |
+| `L21_V024,20734` (cảnh gần giống) | hạng 1 | hạng 2, chấm 0.50 |
+| 18 dòng còn lại | 90-99%, không tách được | 0.00 |
+
+SigLIP bão hoà ở đỉnh nên không xếp hạng nổi trong nhóm đầu; VLM tách dứt khoát.
+Tổng 32.7s (689 frame SigLIP miễn phí + 20 lệnh gọi API ~$0.017).

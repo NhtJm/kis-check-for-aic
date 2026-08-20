@@ -71,7 +71,9 @@ def _one(img, query, base, key, model, timeout=90):
         "max_tokens": 120,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": PROMPT + query},
-            {"type": "image_url", "image_url": {"url": to_data_uri(img)}},
+            # detail=low: chi phi giam ~3 lan ma cau tra loi khong doi (do thuc te
+            # tren gpt-4o-mini: 8532 -> 2865 token, cung cho ket qua nhu nhau).
+            {"type": "image_url", "image_url": {"url": to_data_uri(img), "detail": "low"}},
         ]}],
     }
     req = urllib.request.Request(

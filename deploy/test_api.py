@@ -18,6 +18,7 @@ PRICE = {
     "gpt-4.1-mini":  (0.40,  1.60),
     "gpt-4.1-nano":  (0.10,  0.40),
     "gpt-4o":        (2.50, 10.00),
+    "gpt-4o-2024-11-20": (2.50, 10.00),
 }
 
 
@@ -50,19 +51,35 @@ def main():
             print(f"  {i}{tag}")
         return
 
-    # mot anh 64x64 mau do, nho nhat co the
+    # Dung dung duong chay that: mot frame that, qua api_backend._one(),
+    # ke ca detail=low -- de con so do duoc dung voi luc cham that.
     import numpy as np
-    img = np.zeros((64, 64, 3), dtype="uint8"); img[:, :, 0] = 220
+    try:
+        import cv2
+        cap = cv2.VideoCapture("videos/L21_V015.mp4")
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 25725)
+        ok, fr = cap.read(); cap.release()
+        img = cv2.cvtColor(fr, cv2.COLOR_BGR2RGB) if ok else None
+        what = "frame that (L21_V015 @25725)"
+    except Exception:
+        img, what = None, ""
+    if img is None:
+        img = np.zeros((360, 640, 3), dtype="uint8"); img[:, :, 0] = 220
+        what = "anh mau 640x360"
+    print("anh   :", what)
+
     body = {"model": model, "temperature": 0, "max_tokens": 60,
             "messages": [{"role": "user", "content": [
-                {"type": "text", "text": 'What color is this image? Reply JSON: {"color":"..."}'},
-                {"type": "image_url", "image_url": {"url": api_backend.to_data_uri(img)}}]}]}
+                {"type": "text", "text": api_backend.PROMPT
+                    + "bon phi hanh gia mac ao den truoc tau vu tru"},
+                {"type": "image_url", "image_url": {
+                    "url": api_backend.to_data_uri(img), "detail": "low"}}]}]}
     try:
         r = req(base + "/chat/completions", key, body)
     except urllib.error.HTTPError as e:
         sys.exit(f"HTTP {e.code}: {e.read()[:400].decode()}")
 
-    print("tra loi:", r["choices"][0]["message"]["content"][:120])
+    print("tra loi:", r["choices"][0]["message"]["content"].strip().replace("\n", " ")[:120])
     u = r.get("usage") or {}
     pt, ct = u.get("prompt_tokens", 0), u.get("completion_tokens", 0)
     print(f"token : prompt={pt} completion={ct}")
