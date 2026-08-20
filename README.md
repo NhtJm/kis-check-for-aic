@@ -210,7 +210,8 @@ HF Spaces là lựa chọn tốt nhất cho việc này: đủ RAM chạy SigLIP
 tiền API**, và ngủ sau 48h chứ không phải 15 phút.
 
 ```bash
-./deploy/setup-spaces.sh <user>/<space-name>
+huggingface-cli login
+python3 deploy/push_space.py <user>/<space-name>
 ```
 
 Khoá API (nếu muốn dùng chế độ rerank) đặt ở **Settings → Variables and secrets**
