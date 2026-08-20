@@ -372,3 +372,30 @@ Dùng OpenAI trực tiếp. Đã đo: chạy tốt, $0.00073/frame với `gpt-4o
 Tiếng Việt dồn cả nhóm đầu vào 98-100%, không xếp hạng được với nhau. Tiếng Anh
 tách dứt khoát. Đây là lý do thật để viết query tiếng Anh — không phải vì model
 "hiểu tiếng Anh hơn", mà vì nó cho **độ tách** dùng được.
+
+## Server chỉ cần frame, không cần video
+
+Đây là cách chạy nên dùng khi deploy. Trích sẵn các frame mà submission cần rồi
+đẩy lên bucket — server không đụng tới file video, cũng không đụng tới YouTube.
+
+```bash
+python3 fetch_videos.py submission.csv                    # tải video (chỉ ở máy)
+python3 extract_frames.py --csv submission.csv --window 90 --step 30
+gcloud storage rsync frames gs://<BUCKET>/frames --recursive
+```
+
+Chênh lệch rất lớn — đo trên `submission-kis-3.csv` (100 dòng, 57 video):
+
+| | Dung lượng | Thời gian đẩy lên |
+|---|---|---|
+| Video đầy đủ | 2.2 GB | vài phút |
+| 700 frame JPEG | **31 MB** | **11 giây** |
+
+Nhỏ hơn 70 lần. Trích mất 4.5 giây.
+
+Trích ở cửa sổ rộng nhất bạn định dùng (`--window 90 --step 30` = 7 frame/dòng);
+cửa sổ hẹp hơn lúc chấm là tập con nên vẫn chạy. Thiếu frame nào thì bỏ qua frame
+đó chứ không hỏng cả lượt.
+
+`score_query.py` ưu tiên `frames/` trước, chỉ lùi về đọc video khi thiếu. Trên
+Cloud Run đặt `KIS_FRAME_DIR=/videos/frames`.

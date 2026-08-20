@@ -23,6 +23,7 @@ _lock = threading.Lock()          # model khong an toan da luong -> cham diem tu
 BACKENDS = [b.strip() for b in os.environ.get("KIS_BACKENDS", "siglip,hybrid,api").split(",") if b.strip()]
 FETCH    = os.environ.get("KIS_FETCH", "0") not in ("0", "", "false", "False")
 VIDEODIR = os.environ.get("KIS_VIDEO_DIR", os.path.join(ROOT, "videos"))
+FRAMEDIR = os.environ.get("KIS_FRAME_DIR", os.path.join(ROOT, "frames"))
 # Tren host CPU, mot request qua lon se chay lau hon gateway timeout. Chan truoc
 # va noi ro cach thu nho, thay vi de nguoi dung ngoi cho roi an loi 502.
 MAXFRAMES = int(os.environ.get("KIS_MAX_FRAMES", "0"))     # 0 = khong gioi han
@@ -49,6 +50,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.split("?")[0] == "/api/status":
             vids = sorted(f[:-4] for f in os.listdir(VIDEODIR)
                           if f.endswith(".mp4")) if os.path.isdir(VIDEODIR) else []
+            if os.path.isdir(FRAMEDIR):
+                vids = sorted(set(vids) | {f.rsplit("_", 1)[0] for f in os.listdir(FRAMEDIR)
+                                           if f.endswith(".jpg")})
             api_ok = all(os.environ.get(k) for k in ("KIS_API_BASE", "KIS_API_KEY", "KIS_API_MODEL"))
             allowed = [b for b in BACKENDS if b == "siglip" or api_ok]
             return self._json(200, {"ok": True, "videos": vids, "model": score_query.MODEL_ID,
@@ -90,7 +94,8 @@ class Handler(SimpleHTTPRequestHandler):
                 res, offsets = score_query.run(rows, query, window, step, VIDEODIR,
                                                backend=backend, topk=topk,
                                                log=lambda m: sys.stderr.write(m + "\n"),
-                                               fetch_missing=FETCH, root=ROOT)
+                                               fetch_missing=FETCH, root=ROOT,
+                                               frames_dir=FRAMEDIR)
             return self._json(200, {
                 "ok": True, "query": query, "offsets": offsets,
                 "rows": [[r["video"], r["frame"], r["score"], r["best_off"],

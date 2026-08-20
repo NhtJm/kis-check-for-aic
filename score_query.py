@@ -19,6 +19,20 @@ VIDEO_DIR = "videos"
 
 
 # ---------- doc frame ----------
+def read_frames_dir(frames_dir, vid, indices):
+    """Doc frame da trich san (extract_frames.py). Nhanh hon va khong can file video."""
+    import cv2
+    out = {}
+    for i in indices:
+        p = os.path.join(frames_dir, f"{vid}_{i}.jpg")
+        if os.path.exists(p):
+            img = cv2.imread(p)
+            if img is not None:
+                out[i] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    return out
+
+
+
 def read_frames(video_path, indices):
     """Doc cac frame theo chi so. Doc tuan tu khi gan nhau, seek khi xa -- nhanh hon seek moi lan."""
     import cv2
@@ -74,7 +88,7 @@ def read_submission(path):
 def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
         backend="siglip", topk=20, log=print, fetch_missing=False, root=".",
         agg="mean_emb", rerank=None, rerank_topk=30, rerank_window=None,
-        provider="default"):
+        provider="default", frames_dir=None):
     """backend: 'siglip' (local, mien phi) | 'api' (VLM qua router) | 'hybrid' (loc bang
     SigLIP roi cho VLM cham lai topk dong dau -- re va chinh xac nhat)."""
     offsets = list(range(-window, window + 1, step)) if window > 0 else [0]
@@ -88,17 +102,27 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
 
     frames, totals = {}, {}
     for vid in sorted(need):
+        # Uu tien frame da trich san: khong can video, khong dung toi YouTube.
+        if frames_dir and os.path.isdir(frames_dir):
+            got = read_frames_dir(frames_dir, vid, need[vid])
+            if got:
+                frames[vid], totals[vid] = got, 0
+                log(f"  {vid}: {len(got)}/{len(need[vid])} frame (da trich san)")
+                if len(got) == len(need[vid]):
+                    continue
         path = os.path.join(video_dir, vid + ".mp4")
         if not os.path.exists(path) and fetch_missing:
             import video_cache
             path = video_cache.ensure(vid, video_dir, root, keep=need.keys(), log=log) or path
         if not os.path.exists(path):
-            log(f"  {vid}: THIEU file video, bo qua")
-            frames[vid], totals[vid] = {}, 0
+            if vid not in frames:
+                log(f"  {vid}: THIEU ca frame trich san lan file video, bo qua")
+                frames[vid], totals[vid] = {}, 0
             continue
         got, total = read_frames(path, need[vid])
-        frames[vid], totals[vid] = got, total
-        log(f"  {vid}: doc {len(got)}/{len(need[vid])} frame")
+        frames.setdefault(vid, {}).update(got)
+        totals[vid] = total
+        log(f"  {vid}: doc {len(got)}/{len(need[vid])} frame tu video")
 
     # cham diem mot lan cho toan bo frame
     flat = [(v, i, frames[v][i]) for v in frames for i in sorted(frames[v])]
@@ -211,6 +235,8 @@ def main():
     ap.add_argument("--window", type=int, default=90, help="so frame truoc/sau (mac dinh 90 = +-3s)")
     ap.add_argument("--step", type=int, default=30, help="buoc nhay trong cua so (mac dinh 30 = 1s)")
     ap.add_argument("--videos", default=VIDEO_DIR)
+    ap.add_argument("--frames", default="frames",
+                    help="thu muc frame da trich san (extract_frames.py); uu tien hon video")
     ap.add_argument("--model", default=MODEL_ID)
     ap.add_argument("--backend", default="siglip", choices=["siglip", "api", "hybrid"],
                     help="siglip=local mien phi · api=VLM cham het · hybrid=SigLIP loc roi VLM cham topk")
@@ -241,7 +267,8 @@ def main():
     res, offsets = run(rows, queries, a.window, a.step, a.videos, a.model, a.backend, a.topk,
                        fetch_missing=a.fetch, agg=a.agg,
                        rerank=a.rerank, rerank_topk=a.rerank_topk,
-                       rerank_window=a.rerank_window, provider=a.provider)
+                       rerank_window=a.rerank_window, provider=a.provider,
+                       frames_dir=a.frames)
 
     base = a.out or os.path.splitext(os.path.basename(a.csv))[0] + "-scored"
     payload = {"query": a.query, "queries": queries, "fps": a.fps, "window": a.window,

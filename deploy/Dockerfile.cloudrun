@@ -26,6 +26,7 @@ ENV HOST=0.0.0.0 \
     KIS_BACKENDS=siglip,hybrid,api \
     KIS_FETCH=1 \
     KIS_VIDEO_DIR=/tmp/videos \
+    KIS_FRAME_DIR=/videos/frames \
     KIS_VIDEO_CACHE_MB=400 \
     KIS_MAX_FRAMES=350
 
