@@ -47,9 +47,11 @@ gcloud secrets add-iam-policy-binding "$SECRET" \
   --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor --quiet >/dev/null
 echo "da cap quyen doc secret cho $SA"
 
+# --update-env-vars chu KHONG phai --set-env-vars: --set thay toan bo env var
+# cua service, xoa mat KIS_VIDEO_DIR / KIS_FETCH da dat truoc do.
 gcloud run services update "$SERVICE" --region "$REGION" --quiet \
-  --set-env-vars "KIS_API_BASE=$KIS_API_BASE,KIS_API_MODEL=$KIS_API_MODEL" \
-  --set-secrets "KIS_API_KEY=$SECRET:latest"
+  --update-env-vars "KIS_API_BASE=$KIS_API_BASE,KIS_API_MODEL=$KIS_API_MODEL" \
+  --update-secrets "KIS_API_KEY=$SECRET:latest"
 
 echo
 echo "Xong. Kiem tra:"

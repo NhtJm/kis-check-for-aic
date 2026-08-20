@@ -316,6 +316,9 @@ const key   = () => 'kis-marks:' + source;
 // dong khong cham duoc (thieu video) dat xuong cuoi nhung giu thu tu goc.
 const byScore = () => entries.slice().sort((a,b) => {
   const x = scores[a.rank-1], y = scores[b.rank-1];
+  // Sau khi rerank, thu tu chuan nam o rank_final chu khong phai o diem:
+  // diem cua hai model khac thang do nhau, sort chung la sai.
+  if(x?.rankFinal != null && y?.rankFinal != null) return x.rankFinal - y.rankFinal;
   const px = x?.p ?? -1, py = y?.p ?? -1;
   return (py - px) || ((y?.cos ?? -1) - (x?.cos ?? -1)) || (a.rank - b.rank);
 });
@@ -643,8 +646,8 @@ async function runScoring(){
 
     scores = {}; maxP = 0;
     j.rows.forEach((row, i) => {
-      const [ , , p, bestOff, bestP, meanP, cos] = row;
-      scores[i] = {p, bestOff, bestP, meanP, cos};
+      const [ , , p, bestOff, bestP, meanP, cos, note, rankFinal, rr] = row;
+      scores[i] = {p, bestOff, bestP, meanP, cos, rankFinal, rr};
       if(p != null && p > maxP) maxP = p;
     });
     $('#tabscore').style.display = '';

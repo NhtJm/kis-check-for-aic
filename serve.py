@@ -94,7 +94,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(200, {
                 "ok": True, "query": query, "offsets": offsets,
                 "rows": [[r["video"], r["frame"], r["score"], r["best_off"],
-                          r["best_score"], r["mean_score"], r["cos"], r["note"]] for r in res]})
+                          r["best_score"], r["mean_score"], r["cos"], r["note"],
+                          r.get("rank_final"), r.get("rr")] for r in res]})
         except Exception as e:
             traceback.print_exc()
             return self._json(500, {"ok": False, "error": f"{type(e).__name__}: {e}"})
