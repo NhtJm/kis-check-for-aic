@@ -335,3 +335,40 @@ python3 deploy/test_api.py --list    # xem model nào dùng được
 
 SigLIP bão hoà ở đỉnh nên không xếp hạng nổi trong nhóm đầu; VLM tách dứt khoát.
 Tổng 32.7s (689 frame SigLIP miễn phí + 20 lệnh gọi API ~$0.017).
+
+## Agent Router không dùng được — và vì sao
+
+Router này chỉ chấp nhận một số client được họ hỗ trợ chính thức. Script tự viết
+gọi vào bị từ chối:
+
+```
+401 unauthorized client detected
+使用官方里支持的这些客户端 / Please use the officially supported harnesses
+```
+
+Đã thử và loại trừ hết: khoá mới, prompt tiếng Anh, SDK `openai` chính thức,
+User-Agent chuẩn, mọi model. **Kể cả `GET /models`** — endpoint không có nội dung
+gì để lọc — cũng trả 401. Đây là chính sách kiểm soát truy cập của họ, không phải
+lỗi cấu hình, và không nên tìm cách lách.
+
+Có một chi tiết đáng ghi lại: ban đầu request tiếng Việt trả `400 content-blocked`
+còn tiếng Anh trả `401`. Lý do là **bộ lọc nội dung chạy trước khâu xác thực** —
+request tiếng Việt bị chặn trước khi kịp chạm tới auth, nên che mất vấn đề thật
+nằm ở dưới. Nếu chỉ nhìn lỗi tiếng Việt thì sẽ đi sai hướng.
+
+Dùng OpenAI trực tiếp. Đã đo: chạy tốt, $0.00073/frame với `gpt-4o`.
+
+## Viết query bằng tiếng Anh
+
+Đo trên cùng một submission, cùng frame đúng (`L21_V015,25725`):
+
+| Hạng | Query tiếng Anh | Query tiếng Việt |
+|---|---|---|
+| 1 | **29.77%** ← frame đúng | 99.9% ← frame đúng |
+| 2 | 23.44% | 100.0% |
+| 3 | 0.17% | 99.7% |
+| 4 | 0.06% | 98.4% |
+
+Tiếng Việt dồn cả nhóm đầu vào 98-100%, không xếp hạng được với nhau. Tiếng Anh
+tách dứt khoát. Đây là lý do thật để viết query tiếng Anh — không phải vì model
+"hiểu tiếng Anh hơn", mà vì nó cho **độ tách** dùng được.
