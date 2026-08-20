@@ -14,14 +14,18 @@ import base64, io, json, os, re, sys
 from concurrent.futures import ThreadPoolExecutor
 import urllib.request, urllib.error
 
+# Prompt viet bang tieng Anh, khong phai vi model hieu tieng Anh tot hon, ma vi
+# mot so router (Agent Router) tra ve "content-blocked" cho noi dung tieng Viet.
+# Tien the: do thuc te cho thay query tieng Anh cung xep hang tot hon tieng Viet.
 PROMPT = (
-    "Bạn đang kiểm tra kết quả tìm kiếm video. Dưới đây là một khung hình và một câu mô tả.\n"
-    "Chấm mức độ khớp giữa khung hình và câu mô tả trên thang 0-100:\n"
-    "  0   = hoàn toàn không liên quan\n"
-    "  50  = có vài yếu tố khớp nhưng thiếu ý chính\n"
-    "  100 = khớp hoàn toàn, đúng cảnh được mô tả\n"
-    "Chỉ trả về JSON: {\"score\": <số 0-100>, \"reason\": \"<1 câu ngắn>\"}\n\n"
-    "Câu mô tả: "
+    "You are verifying a video search result. Below are one video frame and one "
+    "scene description.\n"
+    "Rate how well the frame matches the description on a 0-100 scale:\n"
+    "  0   = completely unrelated\n"
+    "  50  = some elements match but the main subject is missing\n"
+    "  100 = a full match, exactly the scene described\n"
+    'Reply with JSON only: {"score": <0-100>, "reason": "<one short sentence>"}\n\n'
+    "Scene description: "
 )
 
 
@@ -42,16 +46,36 @@ def load_dotenv(path=None):
     return True
 
 
-def cfg():
+# Cho phep cau hinh nhieu provider cung luc trong mot file .env:
+#   KIS_API_*  = provider mac dinh
+#   KIS_AR_*   = Agent Router
+PREFIXES = {"default": "KIS_API", "openai": "KIS_API", "ar": "KIS_AR"}
+
+
+def cfg(provider="default"):
     load_dotenv()
-    base  = os.environ.get("KIS_API_BASE", "").rstrip("/")
-    key   = os.environ.get("KIS_API_KEY", "")
-    model = os.environ.get("KIS_API_MODEL", "")
-    missing = [n for n, v in [("KIS_API_BASE", base), ("KIS_API_KEY", key), ("KIS_API_MODEL", model)] if not v]
+    pre = PREFIXES.get(provider, provider)
+    base  = os.environ.get(pre + "_BASE", "").rstrip("/")
+    key   = os.environ.get(pre + "_KEY", "")
+    model = os.environ.get(pre + "_MODEL", "")
+    missing = [pre + s for s, v in [("_BASE", base), ("_KEY", key), ("_MODEL", model)] if not v]
     if missing:
         raise RuntimeError("Thieu cau hinh: " + ", ".join(missing)
                            + " -- dat trong file .env hoac bien moi truong")
     return base, key, model
+
+
+def available():
+    """Liet ke provider da cau hinh du ba gia tri."""
+    load_dotenv()
+    out = {}
+    for name in ("openai", "ar"):
+        try:
+            b, k, m = cfg(name)
+            out[name] = {"base": b, "model": m}
+        except RuntimeError:
+            pass
+    return out
 
 
 def to_data_uri(img_rgb, quality=80, max_w=512):
@@ -95,9 +119,9 @@ def _one(img, query, base, key, model, timeout=90):
     return max(0.0, min(1.0, float(m.group(1)) / 100.0)), ""
 
 
-def score_images(images, query, concurrency=6, log=lambda m: None):
+def score_images(images, query, concurrency=6, log=lambda m: None, provider="default"):
     """Tra ve (probs, notes) song song voi danh sach anh dau vao."""
-    base, key, model = cfg()
+    base, key, model = cfg(provider)
     log(f"  API: {model} qua {base} · {len(images)} frame · {concurrency} luong")
     out = [None] * len(images)
     notes = [""] * len(images)
@@ -114,16 +138,19 @@ def score_images(images, query, concurrency=6, log=lambda m: None):
     return out, notes
 
 
-def selftest():
+def selftest(provider="default"):
     """Kiem tra cau hinh va goi thu mot anh mau."""
     import numpy as np
-    base, key, model = cfg()
+    base, key, model = cfg(provider)
     print(f"base  = {base}\nmodel = {model}\nkey   = {'*' * 8}{key[-4:]} (do dai {len(key)})")
     img = np.zeros((64, 64, 3), dtype="uint8"); img[:, :, 0] = 220   # o vuong do
-    p, note = _one(img, "một ô vuông màu đỏ", base, key, model)
+    p, note = _one(img, "a solid red square", base, key, model)
     print("ket qua:", p, note or "OK")
     return p is not None
 
 
 if __name__ == "__main__":
-    sys.exit(0 if selftest() else 1)
+    which = sys.argv[1] if len(sys.argv) > 1 else "default"
+    print("provider da cau hinh:", ", ".join(available()) or "(chua co cai nao)")
+    print(f"--- thu provider: {which} ---")
+    sys.exit(0 if selftest(which) else 1)

@@ -7,20 +7,20 @@ mot bo bien the co san khong can mang.
 import json, os, re, urllib.request, urllib.error
 
 SYS = (
-    "Bạn giúp chuẩn bị truy vấn cho mô hình tìm kiếm ảnh theo mô tả (CLIP/SigLIP).\n"
-    "Từ câu mô tả cảnh của người dùng, hãy tạo đúng {n} biến thể:\n"
-    "  - ít nhất 2 bản dịch tiếng Anh, viết theo văn phong caption ảnh, ngắn gọn, cụ thể\n"
-    "  - 1 bản tiếng Anh chỉ liệt kê các danh từ/vật thể chính, không cần thành câu\n"
-    "  - phần còn lại là các cách diễn đạt lại bằng tiếng Việt\n"
-    "Giữ nguyên ý nghĩa, không thêm chi tiết không có trong câu gốc.\n"
-    'Chỉ trả về JSON: {{"variants": ["...", "..."]}}'
+    "You prepare queries for an image-text retrieval model (CLIP/SigLIP).\n"
+    "From the user's scene description, produce exactly {n} variants:\n"
+    "  - at least 2 English translations written as image captions: short, concrete\n"
+    "  - 1 English variant listing only the key objects/nouns, not a full sentence\n"
+    "  - the rest: English rephrasings from different angles\n"
+    "Keep the meaning; do not invent details absent from the original.\n"
+    'Reply with JSON only: {{"variants": ["...", "..."]}}'
 )
 
 
 def fallback(query):
     """Khong co API thi van co vai bien the don gian, khong can mang."""
     q = query.strip().rstrip(".")
-    return [q, f"a photo of {q}", f"{q}, khung hình từ bản tin truyền hình"]
+    return [q, f"a photo of {q}", f"{q}, a frame from a TV news broadcast"]
 
 
 def expand(query, n=6, log=lambda m: None):

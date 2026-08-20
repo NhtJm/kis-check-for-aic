@@ -73,7 +73,8 @@ def read_submission(path):
 
 def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
         backend="siglip", topk=20, log=print, fetch_missing=False, root=".",
-        agg="mean_emb", rerank=None, rerank_topk=30, rerank_window=None):
+        agg="mean_emb", rerank=None, rerank_topk=30, rerank_window=None,
+        provider="default"):
     """backend: 'siglip' (local, mien phi) | 'api' (VLM qua router) | 'hybrid' (loc bang
     SigLIP roi cho VLM cham lai topk dong dau -- re va chinh xac nhat)."""
     offsets = list(range(-window, window + 1, step)) if window > 0 else [0]
@@ -106,7 +107,8 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
     queries = [query] if isinstance(query, str) else list(query)
     if backend == "api":
         import api_backend
-        probs, _ = api_backend.score_images([f[2] for f in flat], queries[0], log=log)
+        probs, _ = api_backend.score_images([f[2] for f in flat], queries[0], log=log,
+                                            provider=provider)
         cosines, kind = [None] * len(flat), "absolute"
     else:
         probs, cosines, kind = score_images([f[2] for f in flat], queries, model_id, agg)
@@ -141,7 +143,7 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
 
     if rerank:
         out = _rerank(out, offsets, frames, queries, rerank, rerank_topk, agg, log,
-                      rerank_window=rerank_window)
+                      rerank_window=rerank_window, provider=provider)
     _set_final_rank(out, bool(rerank))
     return out, offsets
 
@@ -159,7 +161,8 @@ def _set_final_rank(out, reranked):
         r["rank_final"] = pos
 
 
-def _rerank(out, offsets, frames, queries, rerank_id, topk, agg, log, rerank_window=None):
+def _rerank(out, offsets, frames, queries, rerank_id, topk, agg, log, rerank_window=None,
+            provider="default"):
     """Cho model thu hai xep lai topk dong dau ma model thu nhat loc ra.
 
     rerank_id = 'api' thi dung VLM qua agent router (KIS_API_MODEL).
@@ -182,7 +185,7 @@ def _rerank(out, offsets, frames, queries, rerank_id, topk, agg, log, rerank_win
 
     if use_api:
         import api_backend
-        probs, _ = api_backend.score_images(imgs, queries[0], log=log)
+        probs, _ = api_backend.score_images(imgs, queries[0], log=log, provider=provider)
         cos = [p if p is not None else -1.0 for p in probs]
     else:
         _, cos, _ = score_images(imgs, queries, rerank_id, agg)
@@ -222,6 +225,8 @@ def main():
     ap.add_argument("--rerank-topk", type=int, default=30, dest="rerank_topk")
     ap.add_argument("--rerank-window", type=int, default=None, dest="rerank_window",
                     help="chi rerank cac frame lech <= N (mac dinh: api=0, model local=ca cua so)")
+    ap.add_argument("--provider", default="default",
+                    help="provider API: openai (KIS_API_*) hoac ar (KIS_AR_*)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
@@ -236,7 +241,7 @@ def main():
     res, offsets = run(rows, queries, a.window, a.step, a.videos, a.model, a.backend, a.topk,
                        fetch_missing=a.fetch, agg=a.agg,
                        rerank=a.rerank, rerank_topk=a.rerank_topk,
-                       rerank_window=a.rerank_window)
+                       rerank_window=a.rerank_window, provider=a.provider)
 
     base = a.out or os.path.splitext(os.path.basename(a.csv))[0] + "-scored"
     payload = {"query": a.query, "queries": queries, "fps": a.fps, "window": a.window,
