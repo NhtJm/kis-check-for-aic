@@ -65,16 +65,26 @@ trong cửa sổ, và lệch bao nhiêu frame — để biết frame chỉ hơi 
 | `hybrid` | SigLIP lọc trước, VLM chấm lại top 20 | thêm ~140 request | thấp |
 | `api` | VLM chấm toàn bộ frame | ~700 request | cao |
 
-Chế độ dùng API đọc cấu hình từ biến môi trường, **không bao giờ ghi khoá vào file**:
+### Cấu hình API
+
+Khoá đọc từ file `.env` ở thư mục gốc dự án, hoặc từ biến môi trường.
+`.env` đã nằm trong `.gitignore` — **không bao giờ commit nó**.
 
 ```bash
-export KIS_API_BASE=https://openrouter.ai/api/v1
-export KIS_API_KEY=...
-export KIS_API_MODEL=google/gemini-2.5-flash
-python3 api_backend.py        # kiểm tra cấu hình
+cp .env.example .env      # rồi mở ra điền khoá
+python3 api_backend.py    # kiểm tra: gọi thử 1 ảnh mẫu
 ```
 
-Khi ba biến này có mặt, `serve.py` tự mở khoá hai chế độ kia trong UI.
+```ini
+KIS_API_BASE=https://agentrouter.org/v1
+KIS_API_KEY=sk-...
+KIS_API_MODEL=claude-opus-5
+```
+
+Biến môi trường thật luôn thắng `.env`, nên khi deploy thì đặt env var ở
+dashboard của host thay vì mang file `.env` lên.
+
+Khi đủ ba giá trị, `serve.py` tự mở khoá hai chế độ `hybrid` và `api` trong UI.
 
 ### Đọc con số thế nào cho đúng
 

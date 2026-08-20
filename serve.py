@@ -12,6 +12,9 @@ import argparse, json, os, sys, threading, traceback
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 import score_query
+import api_backend
+
+api_backend.load_dotenv()      # nap .env ngay khi khoi dong
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 _lock = threading.Lock()          # model khong an toan da luong -> cham diem tuan tu

@@ -25,13 +25,32 @@ PROMPT = (
 )
 
 
+def load_dotenv(path=None):
+    """Doc file .env canh script vao os.environ. Khong ghi de bien da co san."""
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(path):
+        return False
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip().strip('"').strip("'")
+            if k and k not in os.environ:      # bien moi truong that luon thang .env
+                os.environ[k] = v
+    return True
+
+
 def cfg():
+    load_dotenv()
     base  = os.environ.get("KIS_API_BASE", "").rstrip("/")
     key   = os.environ.get("KIS_API_KEY", "")
     model = os.environ.get("KIS_API_MODEL", "")
     missing = [n for n, v in [("KIS_API_BASE", base), ("KIS_API_KEY", key), ("KIS_API_MODEL", model)] if not v]
     if missing:
-        raise RuntimeError("Thieu bien moi truong: " + ", ".join(missing))
+        raise RuntimeError("Thieu cau hinh: " + ", ".join(missing)
+                           + " -- dat trong file .env hoac bien moi truong")
     return base, key, model
 
 
