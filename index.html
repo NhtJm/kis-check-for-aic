@@ -208,6 +208,9 @@
   <input type="text" id="query" placeholder="Mô tả cảnh cần tìm — vd: bốn phi hành gia mặc áo đen đứng trước tàu vũ trụ">
   <label class="ctl">± <input type="number" id="win" value="90" min="0" step="30"> frame</label>
   <label class="ctl">bước <input type="number" id="stp" value="30" min="1" step="10"></label>
+  <label class="ctl chk" id="trwrap" style="display:none"
+         title="Dịch query sang tiếng Anh trước khi chấm. Chỉ tốn 1 lệnh gọi API cho cả lượt.">
+    <input type="checkbox" id="translate" checked> Dịch sang tiếng Anh</label>
   <select id="backend" title="Chọn nơi chấm điểm">
     <option value="siglip">SigLIP (local, miễn phí)</option>
     <option value="hybrid" disabled>SigLIP lọc → VLM rerank top 20 (nhanh, rẻ)</option>
@@ -215,6 +218,8 @@
   </select>
   <button class="btn primary" id="run">Chấm điểm</button>
   <span id="qstatus"></span>
+  <div id="qen" style="display:none;flex-basis:100%;font-size:12px;color:var(--dim);
+       font-family:var(--mono);padding-left:2px"></div>
 </div>
 
 <main>
@@ -305,6 +310,7 @@ let scores = {};             // chi so dong -> {p, bestOff, bestP, meanP, cos}
 let maxP   = 0;              // diem cao nhat, dung de to mau tuong doi
 let apiOn  = false;          // co server local de cham diem khong
 let maxFrames = 0;           // gioi han so frame moi request cua server (0 = khong gioi han)
+let canTranslate = false;    // server co dich duoc khong
 
 let player = null, apiReady = false, loadedVid = null, queued = null;
 
@@ -639,6 +645,7 @@ async function runScoring(){
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({query:q, window:win, step:stp,
                             backend: $('#backend').value, topk: 20,
+                            translate: $('#translate').checked && canTranslate,
                             rows: entries.map(e => [e.video, e.frame])})
     });
     const j = await r.json();
@@ -652,6 +659,11 @@ async function runScoring(){
     });
     $('#tabscore').style.display = '';
     $('#exportsub').style.display = '';
+    const qe = $('#qen');
+    if(j.translated){
+      qe.style.display = '';
+      qe.textContent = 'đã chấm bằng: "' + j.query_en + '"';
+    } else qe.style.display = 'none';
     const secs = ((Date.now()-t0)/1000).toFixed(0);
     const nOk = Object.values(scores).filter(x => x.p != null).length;
     setQ('xong ' + nOk + '/' + entries.length + ' dòng · ' + secs + 's · cao nhất '
@@ -722,6 +734,8 @@ fetch('/api/status').then(r => r.json()).then(j => {
   apiOn = true;
   document.body.classList.add('api');
   maxFrames = j.max_frames || 0;
+  canTranslate = !!j.translate;
+  $('#trwrap').style.display = canTranslate ? '' : 'none';
   const allowed = j.backends || (j.api ? ['siglip','hybrid','api'] : ['siglip']);
   [...$('#backend').options].forEach(o => o.disabled = !allowed.includes(o.value));
   if(!allowed.includes($('#backend').value)) $('#backend').value = allowed[0] || 'siglip';

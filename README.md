@@ -399,3 +399,19 @@ cửa sổ hẹp hơn lúc chấm là tập con nên vẫn chạy. Thiếu frame
 
 `score_query.py` ưu tiên `frames/` trước, chỉ lùi về đọc video khi thiếu. Trên
 Cloud Run đặt `KIS_FRAME_DIR=/videos/frames`.
+
+## Tự dịch query sang tiếng Anh
+
+```bash
+python3 score_query.py --csv sub.csv --query "hai người phụ nữ cho dê ăn" --translate
+```
+
+Trong UI: tick **Dịch sang tiếng Anh** (tự hiện khi server có cấu hình API). Sau
+khi chấm, UI hiện câu đã dùng thật để bạn kiểm chứng.
+
+Chỉ tốn **một** lệnh gọi API cho cả lượt chấm (~$0.0002), khác hẳn rerank vốn tốn
+một lệnh gọi mỗi frame. Query vốn đã tiếng Anh thì bỏ qua, không gọi API.
+
+Đã kiểm chứng: bản dịch tự động cho kết quả trùng khớp với query tiếng Anh viết tay
+— cùng thứ tự, cùng giá trị cosine.
+

@@ -54,11 +54,14 @@ class Handler(SimpleHTTPRequestHandler):
                 vids = sorted(set(vids) | {f.rsplit("_", 1)[0] for f in os.listdir(FRAMEDIR)
                                            if f.endswith(".jpg")})
             api_ok = all(os.environ.get(k) for k in ("KIS_API_BASE", "KIS_API_KEY", "KIS_API_MODEL"))
+            # Dich chi ton MOT lenh goi cho ca luot cham, khac han rerank (moi frame
+            # mot lenh goi) -- nen co the bat rieng ma khong so bi lam dung.
+            can_translate = api_ok
             allowed = [b for b in BACKENDS if b == "siglip" or api_ok]
             return self._json(200, {"ok": True, "videos": vids, "model": score_query.MODEL_ID,
                                     "api": api_ok, "api_model": os.environ.get("KIS_API_MODEL", ""),
                                     "backends": allowed, "fetch": FETCH,
-                                    "max_frames": MAXFRAMES})
+                                    "max_frames": MAXFRAMES, "translate": can_translate})
         return super().do_GET()
 
     def do_POST(self):
@@ -81,6 +84,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(400, {"ok": False,
                                         "error": f"backend '{backend}' khong duoc bat tren server nay"})
             topk    = int(req.get("topk", 20))
+            do_tr   = bool(req.get("translate", False))
+
+            query_en, translated = query, False
+            if do_tr:
+                import query_expand
+                query_en, translated = query_expand.translate(
+                    query, log=lambda m: sys.stderr.write(m + "\n"))
             per = (window * 2 // step + 1) if window > 0 else 1
             nframes = len(rows) * per
             if MAXFRAMES and nframes > MAXFRAMES:
@@ -91,13 +101,14 @@ class Handler(SimpleHTTPRequestHandler):
                              f"· step {step} · backend={backend} · query={query!r}\n")
 
             with _lock:
-                res, offsets = score_query.run(rows, query, window, step, VIDEODIR,
+                res, offsets = score_query.run(rows, query_en, window, step, VIDEODIR,
                                                backend=backend, topk=topk,
                                                log=lambda m: sys.stderr.write(m + "\n"),
                                                fetch_missing=FETCH, root=ROOT,
                                                frames_dir=FRAMEDIR)
             return self._json(200, {
-                "ok": True, "query": query, "offsets": offsets,
+                "ok": True, "query": query, "query_en": query_en,
+                "translated": translated, "offsets": offsets,
                 "rows": [[r["video"], r["frame"], r["score"], r["best_off"],
                           r["best_score"], r["mean_score"], r["cos"], r["note"],
                           r.get("rank_final"), r.get("rr")] for r in res]})

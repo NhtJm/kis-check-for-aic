@@ -88,7 +88,7 @@ def read_submission(path):
 def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
         backend="siglip", topk=20, log=print, fetch_missing=False, root=".",
         agg="mean_emb", rerank=None, rerank_topk=30, rerank_window=None,
-        provider="default", frames_dir=None):
+        provider="default", frames_dir=None, translate=False):
     """backend: 'siglip' (local, mien phi) | 'api' (VLM qua router) | 'hybrid' (loc bang
     SigLIP roi cho VLM cham lai topk dong dau -- re va chinh xac nhat)."""
     offsets = list(range(-window, window + 1, step)) if window > 0 else [0]
@@ -129,6 +129,11 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
     log(f"Cham diem {len(flat)} frame · backend={backend} · query={query!r}")
 
     queries = [query] if isinstance(query, str) else list(query)
+    if translate:
+        # Dich sang tieng Anh truoc khi cham: do thuc te cho thay query tieng Anh
+        # tach diem tot hon han tieng Viet (29.77/23.44/0.17 so voi 99.9/100/99.7).
+        import query_expand
+        queries = [query_expand.translate(q, provider, log)[0] for q in queries]
     if backend == "api":
         import api_backend
         probs, _ = api_backend.score_images([f[2] for f in flat], queries[0], log=log,
@@ -251,6 +256,8 @@ def main():
     ap.add_argument("--rerank-topk", type=int, default=30, dest="rerank_topk")
     ap.add_argument("--rerank-window", type=int, default=None, dest="rerank_window",
                     help="chi rerank cac frame lech <= N (mac dinh: api=0, model local=ca cua so)")
+    ap.add_argument("--translate", action="store_true",
+                    help="tu dich query sang tieng Anh bang API truoc khi cham")
     ap.add_argument("--provider", default="default",
                     help="provider API: openai (KIS_API_*) hoac ar (KIS_AR_*)")
     ap.add_argument("--out", default=None)
@@ -268,7 +275,7 @@ def main():
                        fetch_missing=a.fetch, agg=a.agg,
                        rerank=a.rerank, rerank_topk=a.rerank_topk,
                        rerank_window=a.rerank_window, provider=a.provider,
-                       frames_dir=a.frames)
+                       frames_dir=a.frames, translate=a.translate)
 
     base = a.out or os.path.splitext(os.path.basename(a.csv))[0] + "-scored"
     payload = {"query": a.query, "queries": queries, "fps": a.fps, "window": a.window,
