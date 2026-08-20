@@ -45,41 +45,16 @@ def read_frames(video_path, indices):
 
 
 # ---------- model ----------
-_cache = {}
+import scorers
 
-def get_model(model_id=MODEL_ID):
-    if model_id in _cache:
-        return _cache[model_id]
-    import torch
-    from transformers import AutoModel, AutoProcessor
-    dev = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
-    model = AutoModel.from_pretrained(model_id).to(dev).eval()
-    proc  = AutoProcessor.from_pretrained(model_id)
-    _cache[model_id] = (model, proc, dev)
-    return _cache[model_id]
+MODEL_ID = scorers.SIGLIP
 
 
-def score_images(images, query, model_id=MODEL_ID, batch=24):
-    """Tra ve xac suat khop (0..1) cua tung anh voi cau query."""
-    import torch
-    model, proc, dev = get_model(model_id)
-    with torch.no_grad():
-        t = proc(text=[query], padding="max_length", truncation=True, return_tensors="pt").to(dev)
-        tf = model.get_text_features(**t)
-        tf = tf / tf.norm(dim=-1, keepdim=True)
-
-        sims = []
-        for i in range(0, len(images), batch):
-            im = proc(images=images[i:i+batch], return_tensors="pt").to(dev)
-            f = model.get_image_features(**im)
-            f = f / f.norm(dim=-1, keepdim=True)
-            sims.append((f @ tf.T).squeeze(-1).float().cpu())
-        if not sims:
-            return np.zeros(0), np.zeros(0)
-        cos = torch.cat(sims)
-        # SigLIP: sigmoid(scale * cos + bias) -> xac suat khop da hieu chuan
-        logits = model.logit_scale.exp().float().cpu() * cos + model.logit_bias.float().cpu()
-        return torch.sigmoid(logits).numpy(), cos.numpy()
+def score_images(images, queries, model_id=MODEL_ID, agg="mean_emb"):
+    """Tra ve (probs, cosines, kind). queries: mot chuoi hoac danh sach bien the."""
+    if isinstance(queries, str):
+        queries = [queries]
+    return scorers.score(images, queries, model_id, agg)
 
 
 # ---------- pipeline ----------
@@ -97,7 +72,8 @@ def read_submission(path):
 
 
 def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
-        backend="siglip", topk=20, log=print, fetch_missing=False, root="."):
+        backend="siglip", topk=20, log=print, fetch_missing=False, root=".",
+        agg="mean_emb", rerank=None, rerank_topk=30, rerank_window=None):
     """backend: 'siglip' (local, mien phi) | 'api' (VLM qua router) | 'hybrid' (loc bang
     SigLIP roi cho VLM cham lai topk dong dau -- re va chinh xac nhat)."""
     offsets = list(range(-window, window + 1, step)) if window > 0 else [0]
@@ -127,12 +103,13 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
     flat = [(v, i, frames[v][i]) for v in frames for i in sorted(frames[v])]
     log(f"Cham diem {len(flat)} frame · backend={backend} · query={query!r}")
 
+    queries = [query] if isinstance(query, str) else list(query)
     if backend == "api":
         import api_backend
-        probs, _ = api_backend.score_images([f[2] for f in flat], query, log=log)
-        cosines = [None] * len(flat)
+        probs, _ = api_backend.score_images([f[2] for f in flat], queries[0], log=log)
+        cosines, kind = [None] * len(flat), "absolute"
     else:
-        probs, cosines = score_images([f[2] for f in flat], query, model_id)
+        probs, cosines, kind = score_images([f[2] for f in flat], queries, model_id, agg)
 
     P = {(v, i): (None if p is None else float(p), None if c is None else float(c))
          for (v, i, _), p, c in zip(flat, probs, cosines)}
@@ -144,7 +121,9 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
                if (v, fr + o) in P and P[(v, fr + o)][0] is not None]
         if not pts:
             out.append({**r, "score": None, "cos": None, "best_off": None,
-                        "best_score": None, "mean_score": None, "note": "khong doc duoc frame"})
+                        "best_score": None, "mean_score": None,
+                        "rr": None, "rr_off": None, "rr_at0": None,
+                        "note": "khong doc duoc frame"})
             continue
         exact = next((p for o, p, c in pts if o == 0), None)
         ecos  = next((c for o, p, c in pts if o == 0), None)
@@ -154,39 +133,70 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
                     "best_off": bo, "best_score": bp,
                     "mean_score": sum(p for _, p, _ in pts) / len(pts),
                     "window": [{"off": o, "p": p} for o, p, c in pts],
+                    "rr": None, "rr_off": None, "rr_at0": None,
                     "note": ""})
 
-    if backend == "hybrid":
-        out = _refine_with_api(out, offsets, frames, query, topk, log)
+    if backend == "hybrid" and not rerank:      # hybrid = rerank bang VLM qua API
+        rerank, rerank_topk = "api", topk
+
+    if rerank:
+        out = _rerank(out, offsets, frames, queries, rerank, rerank_topk, agg, log,
+                      rerank_window=rerank_window)
+    _set_final_rank(out, bool(rerank))
     return out, offsets
 
 
-def _refine_with_api(out, offsets, frames, query, topk, log):
-    """Lay topk dong diem cao nhat theo SigLIP roi cho VLM cham lai cho chac."""
-    import api_backend
-    ranked = sorted([r for r in out if r["score"] is not None],
-                    key=lambda r: (-r["score"], -(r["cos"] or 0)))[:topk]
-    if not ranked:
+def _set_final_rank(out, reranked):
+    """Thu tu chuan cuoi cung. Khi co rerank, nhom da rerank luon dung tren nhom con lai --
+    tron diem cua hai model khac thang do voi nhau la sai."""
+    def key(t):
+        i, r = t
+        grp = 0 if (reranked and r.get("rr") is not None) else 1
+        val = r["rr"] if (reranked and r.get("rr") is not None) else \
+              (r["score"] if r["score"] is not None else -1)
+        return (grp, -val, -(r["cos"] or 0), i)
+    for pos, (i, r) in enumerate(sorted(enumerate(out), key=key), 1):
+        r["rank_final"] = pos
+
+
+def _rerank(out, offsets, frames, queries, rerank_id, topk, agg, log, rerank_window=None):
+    """Cho model thu hai xep lai topk dong dau ma model thu nhat loc ra.
+
+    rerank_id = 'api' thi dung VLM qua agent router (KIS_API_MODEL).
+    Mac dinh VLM chi cham dung frame do (offset 0) cho nhanh va re; model chay local
+    thi quet ca cua so."""
+    use_api = rerank_id == "api"
+    if rerank_window is None:
+        rr_offsets = [0] if use_api else offsets
+    else:
+        rr_offsets = [o for o in offsets if abs(o) <= rerank_window] or [0]
+
+    short = sorted([r for r in out if r["score"] is not None],
+                   key=lambda r: (-r["score"], -(r["cos"] or 0)))[:topk]
+    if not short:
         return out
-    jobs = [(r, o, r["frame"] + o) for r in ranked for o in offsets
+    jobs = [(r, o, r["frame"] + o) for r in short for o in rr_offsets
             if (r["frame"] + o) in frames.get(r["video"], {})]
-    log(f"Hybrid: SigLIP loc con {len(ranked)} dong -> VLM cham lai {len(jobs)} frame")
-    probs, _ = api_backend.score_images([frames[r["video"]][i] for r, o, i in jobs], query, log=log)
+    imgs = [frames[r["video"]][i] for r, o, i in jobs]
+    log(f"Rerank bang {rerank_id}: {len(short)} dong / {len(jobs)} frame")
+
+    if use_api:
+        import api_backend
+        probs, _ = api_backend.score_images(imgs, queries[0], log=log)
+        cos = [p if p is not None else -1.0 for p in probs]
+    else:
+        _, cos, _ = score_images(imgs, queries, rerank_id, agg)
 
     got = {}
-    for (r, o, _), p in zip(jobs, probs):
-        if p is not None:
-            got.setdefault(id(r), []).append((o, p))
-    for r in ranked:
+    for (r, o, _), c in zip(jobs, cos):
+        got.setdefault(id(r), []).append((o, float(c)))
+    for r in short:
         pts = got.get(id(r))
         if not pts:
-            r["note"] = "VLM khong cham duoc, giu diem SigLIP"; continue
-        r["siglip_score"] = r["score"]
-        r["score"] = next((p for o, p in pts if o == 0), max(p for _, p in pts))
-        bo, bp = max(pts, key=lambda x: x[1])
-        r["best_off"], r["best_score"] = bo, bp
-        r["mean_score"] = sum(p for _, p in pts) / len(pts)
-        r["note"] = "VLM cham lai"
+            continue
+        r["rr"]      = max(c for _, c in pts)          # lay diem cao nhat trong cua so
+        r["rr_off"]  = max(pts, key=lambda x: x[1])[0]
+        r["rr_at0"]  = next((c for o, c in pts if o == 0), None)
     return out
 
 
@@ -203,19 +213,37 @@ def main():
                     help="siglip=local mien phi · api=VLM cham het · hybrid=SigLIP loc roi VLM cham topk")
     ap.add_argument("--topk", type=int, default=20, help="so dong VLM cham lai o che do hybrid")
     ap.add_argument("--fetch", action="store_true", help="tu tai video con thieu")
+    ap.add_argument("--expand", type=int, default=0,
+                    help="nho LLM dich/dien dat lai thanh N bien the roi gop diem (0 = tat)")
+    ap.add_argument("--agg", default="mean_emb", choices=["mean_emb", "max", "mean"],
+                    help="cach gop nhieu bien the: mean_emb (gop vector, kinh dien) | max | mean")
+    ap.add_argument("--rerank", default=None,
+                    help="xep lai vong hai: 'api' (VLM qua agent router) hoac jinaai/jina-clip-v2")
+    ap.add_argument("--rerank-topk", type=int, default=30, dest="rerank_topk")
+    ap.add_argument("--rerank-window", type=int, default=None, dest="rerank_window",
+                    help="chi rerank cac frame lech <= N (mac dinh: api=0, model local=ca cua so)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
     rows = read_submission(a.csv)
     print(f"{len(rows)} dong tu {a.csv}")
-    res, offsets = run(rows, a.query, a.window, a.step, a.videos, a.model, a.backend, a.topk,
-                       fetch_missing=a.fetch)
+
+    queries = [a.query]
+    if a.expand:
+        import query_expand
+        queries = query_expand.expand(a.query, a.expand, log=print)
+
+    res, offsets = run(rows, queries, a.window, a.step, a.videos, a.model, a.backend, a.topk,
+                       fetch_missing=a.fetch, agg=a.agg,
+                       rerank=a.rerank, rerank_topk=a.rerank_topk,
+                       rerank_window=a.rerank_window)
 
     base = a.out or os.path.splitext(os.path.basename(a.csv))[0] + "-scored"
-    payload = {"query": a.query, "fps": a.fps, "window": a.window, "step": a.step,
-               "offsets": offsets, "model": a.model, "backend": a.backend,
+    payload = {"query": a.query, "queries": queries, "fps": a.fps, "window": a.window,
+               "step": a.step, "offsets": offsets, "model": a.model, "backend": a.backend,
+               "agg": a.agg, "rerank": a.rerank,
                "rows": [[r["video"], r["frame"], r["score"], r["best_off"],
-                         r["best_score"], r["mean_score"], r["cos"]] for r in res]}
+                         r["best_score"], r["mean_score"], r["cos"], r["rank_final"]] for r in res]}
     with open(base + ".json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False)
     with open(base + ".csv", "w", newline="", encoding="utf-8-sig") as f:
@@ -228,13 +256,25 @@ def main():
                         "" if r["best_off"] is None else r["best_off"], pc(r["mean_score"]),
                         "" if r["cos"] is None else f"{r['cos']:.4f}", r["note"]])
 
-    ranked = sorted([r for r in res if r["score"] is not None],
-                    key=lambda r: (-r["score"], -(r["cos"] or 0)))
+    # submission da xep lai hang theo diem model, dung dinh dang <video_id>,<frame_id>
+    order = sorted(range(len(res)), key=lambda i: res[i]["rank_final"])
+    with open(base + "-reranked.csv", "w", newline="", encoding="utf-8") as f:
+        for i in order:
+            f.write(f"{res[i]['video']},{res[i]['frame']}\n")
+    print(f"Da ghi {base}-reranked.csv (submission xep lai theo diem)")
+
     print(f"\nDa ghi {base}.json va {base}.csv")
-    print(f"\n{'#':>4} {'video':11s} {'frame':>7s} {'khop%':>7s} {'tot nhat%':>10s} {'lech':>6s} {'cos':>8s}")
-    for r in ranked[:15]:
-        print(f"{rows.index({'video':r['video'],'frame':r['frame']})+1:>4} {r['video']:11s} {r['frame']:>7d} "
-              f"{r['score']*100:>6.1f}% {r['best_score']*100:>9.1f}% {r['best_off']:>+6d} {r['cos']:>+8.4f}")
+    hdr = f"\n{'moi':>4} {'goc':>4} {'video':11s} {'frame':>7s} {'khop%':>7s} {'lech':>6s} {'cos':>8s}"
+    if a.rerank:
+        hdr += f" {'rerank':>8s}"
+    print(hdr)
+    for i in order[:15]:
+        r = res[i]
+        line = (f"{r['rank_final']:>4} {i+1:>4} {r['video']:11s} {r['frame']:>7d} "
+                f"{(r['score'] or 0)*100:>6.1f}% {(r['best_off'] or 0):>+6d} {(r['cos'] or 0):>+8.4f}")
+        if a.rerank:
+            line += f" {r['rr']:>+8.4f}" if r["rr"] is not None else f" {'-':>8s}"
+        print(line)
 
 
 if __name__ == "__main__":

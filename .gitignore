@@ -7,3 +7,4 @@ videos/
 .DS_Store
 __pycache__/
 .env
+*-reranked.csv

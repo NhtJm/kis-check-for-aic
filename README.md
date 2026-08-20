@@ -152,3 +152,66 @@ với `claude-opus-5` (ratio 1, completion ratio 5), cửa sổ ±90 frame bư�
 | `api` | ~700 | ~$0.77 |
 
 Muốn rẻ hơn thì giảm cửa sổ: `--window 30 --step 30` còn 3 frame mỗi dòng thay vì 7.
+
+## Xếp hạng lại và đo chất lượng
+
+Điểm % không nói lên chất lượng — **thứ hạng của frame đúng** mới nói lên. Dùng
+`compare.py` để đo, với `--truth` là dòng bạn biết chắc là đúng:
+
+```bash
+python3 compare.py --csv submission.csv \
+  --query "câu query tiếng Việt" \
+  --en "English translation" \
+  --truth L21_V015,25725
+```
+
+Nó chạy lần lượt các cấu hình và báo frame đúng rơi vào hạng mấy ở từng cấu hình.
+
+### Xếp lại vòng hai
+
+```bash
+# VLM qua agent router xếp lại 30 dòng đầu — nhanh, chỉ ~30 request
+python3 score_query.py --csv sub.csv --query "..." --rerank api --rerank-topk 30
+
+# hoặc jina-clip-v2 chạy local — không tốn tiền nhưng chậm hơn nhiều
+python3 score_query.py --csv sub.csv --query "..." --rerank jinaai/jina-clip-v2
+```
+
+Nhóm đã rerank **luôn xếp trên** nhóm còn lại. Đây là chủ ý: điểm của hai model
+khác thang đo nhau, trộn chung rồi sort là sai thứ tự. Thứ tự chuẩn nằm ở trường
+`rank_final`, không phải ở `score`.
+
+Mặc định VLM chỉ chấm đúng frame đó (offset 0) cho nhanh và rẻ; model chạy local
+thì quét cả cửa sổ. Đổi bằng `--rerank-window N`.
+
+### Gộp nhiều biến thể câu query
+
+```bash
+python3 score_query.py --csv sub.csv --query "..." --expand 6
+```
+
+Nhờ LLM dịch sang tiếng Anh và diễn đạt lại thành N biến thể rồi gộp vector chữ
+(`--agg mean_emb`, cách gộp kinh điển của CLIP). Cần cấu hình API.
+
+**Gộp không phải lúc nào cũng tốt hơn.** Trong một phép đo (n=1, query của tôi
+chứ không phải của bạn): tiếng Anh thuần đưa frame đúng lên hạng 1, tiếng Việt
+thuần hạng 2, còn gộp VI+EN lại tụt về hạng 2. Trung bình vector kéo kết quả về
+phía biến thể yếu hơn. Hãy tự đo bằng `compare.py` trên query thật của bạn.
+
+## Deploy: chọn host nào
+
+| Host | RAM free tier | SigLIP chạy được? | Ghi chú |
+|---|---|---|---|
+| **HF Spaces** | ~16GB | **có** | Dockerfile ở `deploy/Dockerfile.spaces` |
+| Render free | 512MB | không | ép dùng API, ngủ sau 15 phút |
+| Railway | — | — | không còn free tier thật, tối thiểu ~$5/tháng |
+
+HF Spaces là lựa chọn tốt nhất cho việc này: đủ RAM chạy SigLIP nên **không tốn
+tiền API**, và ngủ sau 48h chứ không phải 15 phút.
+
+```bash
+./deploy/setup-spaces.sh <user>/<space-name>
+```
+
+Khoá API (nếu muốn dùng chế độ rerank) đặt ở **Settings → Variables and secrets**
+của Space, không đưa `.env` lên.

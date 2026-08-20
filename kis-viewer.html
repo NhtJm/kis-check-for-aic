@@ -198,7 +198,8 @@
     <span style="color:var(--maybe)">? <b id="nmb">0</b></span>
     <span>/ <b id="ntotal">0</b></span>
   </div>
-  <button class="btn" id="export">Xuất CSV</button>
+  <button class="btn" id="export">Xuất báo cáo</button>
+  <button class="btn" id="exportsub" style="display:none">Xuất submission</button>
   <button class="btn" id="reset">Xoá đánh dấu</button>
 </header>
 
@@ -209,7 +210,7 @@
   <label class="ctl">bước <input type="number" id="stp" value="30" min="1" step="10"></label>
   <select id="backend" title="Chọn nơi chấm điểm">
     <option value="siglip">SigLIP (local, miễn phí)</option>
-    <option value="hybrid" disabled>Hybrid: SigLIP lọc → VLM chấm top 20</option>
+    <option value="hybrid" disabled>SigLIP lọc → VLM rerank top 20 (nhanh, rẻ)</option>
     <option value="api" disabled>VLM chấm hết (chậm &amp; tốn)</option>
   </select>
   <button class="btn primary" id="run">Chấm điểm</button>
@@ -310,13 +311,16 @@ const secOf = e => e.frame / fps;
 const mmss  = s => (s < 0 ? '-' : '') + Math.floor(Math.abs(s)/60) + ':'
                  + String(Math.floor(Math.abs(s)%60)).padStart(2,'0');
 const key   = () => 'kis-marks:' + source;
+// Xep theo diem model: p giam dan, hoa thi phan giai bang cosine,
+// dong khong cham duoc (thieu video) dat xuong cuoi nhung giu thu tu goc.
+const byScore = () => entries.slice().sort((a,b) => {
+  const x = scores[a.rank-1], y = scores[b.rank-1];
+  const px = x?.p ?? -1, py = y?.p ?? -1;
+  return (py - px) || ((y?.cos ?? -1) - (x?.cos ?? -1)) || (a.rank - b.rank);
+});
 const rowsOf = () => view === 'top10' ? entries.slice(0,10)
-                  : view === 'byscore'
-                    ? entries.slice().sort((a,b) => {
-                        const x = scores[a.rank-1], y = scores[b.rank-1];
-                        return ((y?.p ?? -1) - (x?.p ?? -1)) || ((y?.cos ?? -1) - (x?.cos ?? -1));
-                      })
-                    : entries;
+                  : view === 'byscore' ? byScore()
+                  : entries;
 
 /* ---------- nap CSV ---------- */
 function parseCSV(text){
@@ -350,6 +354,7 @@ function loadRows(rows, name){
   marks = JSON.parse(localStorage.getItem(key()) || '{}');
   scores = {}; maxP = 0;
   $('#tabscore').style.display = 'none';
+  $('#exportsub').style.display = 'none';
   if(view === 'byscore'){ view = 'top10'; syncTabs(); }
   const miss = order.filter(v => !MEDIA[v]);
 
@@ -637,6 +642,7 @@ async function runScoring(){
       if(p != null && p > maxP) maxP = p;
     });
     $('#tabscore').style.display = '';
+    $('#exportsub').style.display = '';
     const secs = ((Date.now()-t0)/1000).toFixed(0);
     const nOk = Object.values(scores).filter(x => x.p != null).length;
     setQ('xong ' + nOk + '/' + entries.length + ' dòng · ' + secs + 's · cao nhất '
@@ -653,6 +659,19 @@ async function runScoring(){
 function setQ(msg, cls){ const el = $('#qstatus'); el.textContent = msg; el.className = cls || ''; }
 $('#run').onclick = runScoring;
 $('#query').onkeydown = ev => { if(ev.key === 'Enter'){ ev.preventDefault(); runScoring(); } };
+
+$('#exportsub').onclick = () => {
+  const ranked = byScore();
+  const lines = ranked.map(e => e.video + ',' + e.frame);
+  const n = ranked.filter(e => (scores[e.rank-1]?.p ?? null) != null).length;
+  const blob = new Blob([lines.join('\n') + '\n'], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = source.replace(/\.csv$/i,'') + '-reranked.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setQ('đã xuất ' + lines.length + ' dòng (' + n + ' dòng có điểm) theo thứ tự model', '');
+};
 
 document.onkeydown = ev => {
   if(ev.target.tagName === 'INPUT' || !entries.length) return;
