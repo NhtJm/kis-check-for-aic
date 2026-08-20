@@ -12,6 +12,8 @@ Công cụ kiểm tra nhanh file submission Known-Item Search (AIC) bằng cách
 2. CSV mỗi dòng: `L21_V015,25725` — mã video, số frame. Dòng header được bỏ qua.
 3. Frame đổi ra giây theo **fps** ở thanh trên (mặc định `30`, sửa được).
 4. Duyệt bằng `↑`/`↓`, đánh dấu `1` đúng · `2` sai · `3` chưa chắc.
+   Mặc định video **đứng sẵn ở đúng frame**, bấm mới chạy — bật **Tự phát**
+   nếu muốn chọn kết quả là phát ngay. Lựa chọn này được nhớ lại.
 5. **Xuất CSV** để lấy lại bảng kèm timestamp và đánh giá.
 
 Đánh dấu lưu trong `localStorage` theo tên file, đóng tab mở lại vẫn còn.
