@@ -253,3 +253,46 @@ thì sẽ phát hiện lúc đã deploy:
 
 Ngoài ra `pip install torch` trên Linux mặc định kéo bản CUDA kèm ~2-3GB driver
 NVIDIA vô dụng trên host CPU — Dockerfile ép về index CPU.
+
+### YouTube chặn tải từ cloud — video phải nằm ở Cloud Storage
+
+Chế độ `KIS_FETCH=1` (tải video theo yêu cầu) **chỉ chạy được ở máy nhà**. Trên
+mọi cloud host, yt-dlp bị YouTube chặn:
+
+```
+ERROR: [youtube] <id>: Sign in to confirm you're not a bot.
+```
+
+Đây là chặn theo IP datacenter, không sửa được bằng code. Phần **xem video vẫn
+chạy bình thường** vì player nằm trong trình duyệt người xem, không phải trên server.
+
+Cách xử lý: đẩy video lên bucket rồi mount vào Cloud Run.
+
+```bash
+gcloud storage buckets create gs://<BUCKET> --location=asia-southeast1 --uniform-bucket-level-access
+gcloud storage rsync videos gs://<BUCKET> --recursive
+
+gcloud run services update kis-check-for-aic --region asia-southeast1 \
+  --add-volume=name=vids,type=cloud-storage,bucket=<BUCKET>,readonly=true \
+  --add-volume-mount=volume=vids,mount-path=/videos \
+  --update-env-vars KIS_VIDEO_DIR=/videos,KIS_FETCH=0
+```
+
+Thêm video mới cho submission khác thì `fetch_videos.py` ở máy rồi `rsync` lên bucket.
+
+### Gọi GPT / Claude qua Agent Router trên Cloud Run
+
+Cloud Run **không đọc file `.env`** — container là ephemeral, và nhét khoá vào
+image thì ai kéo image cũng đọc được. Khoá phải nằm ở Secret Manager:
+
+```bash
+cp .env.example .env      # điền KIS_API_KEY, đặt KIS_API_MODEL=gpt-5.6-sol
+./deploy/cloudrun-api.sh
+```
+
+Script đọc `.env` ở máy bạn, đẩy khoá thẳng vào Secret Manager, cấp quyền đọc cho
+service account, rồi gắn vào service. Khoá không đi qua image, không vào git.
+
+**Cân nhắc trước khi bật:** service đang public, nên ai vào cũng bấm chấm điểm
+được và tiêu credit của bạn. Nếu chỉ cần SigLIP (vốn miễn phí và đủ dùng) thì
+đừng gắn khoá lên đó — chạy rerank ở máy khi cần.

@@ -23,7 +23,18 @@ echo "service = $SERVICE   region = $REGION"
 
 echo "bat cac API can thiet ..."
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
-                       artifactregistry.googleapis.com --quiet
+                       artifactregistry.googleapis.com storage.googleapis.com --quiet
+
+# Project GCP moi khong tu cap quyen Cloud Build cho default compute service
+# account -> build se chet voi PERMISSION_DENIED. Cap truoc cho chac.
+NUM="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+SA="$NUM-compute@developer.gserviceaccount.com"
+for role in roles/cloudbuild.builds.builder roles/logging.logWriter \
+            roles/artifactregistry.writer roles/storage.objectViewer; do
+  gcloud projects add-iam-policy-binding "$PROJECT" \
+    --member="serviceAccount:$SA" --role="$role" --quiet >/dev/null 2>&1 || true
+done
+echo "da cap quyen Cloud Build cho $SA"
 
 # Cloud Build doc Dockerfile o goc thu muc nguon, nen don rieng mot thu muc
 # chi chua dung nhung gi can -- khong mang videos/, media-info/, .env len.
@@ -48,6 +59,18 @@ gcloud run deploy "$SERVICE" \
   --max-instances 2 \
   --port 8080 \
   --quiet
+
+cat <<'NOTE'
+
+QUAN TRONG -- video phai nam trong Cloud Storage, khong tai tu YouTube duoc:
+YouTube chan tai tu IP datacenter ("Sign in to confirm you're not a bot"), nen
+che do KIS_FETCH khong dung duoc tren cloud. Day video len bucket va mount vao:
+
+  gcloud storage buckets create gs://<BUCKET> --location=<REGION> --uniform-bucket-level-access
+  gcloud storage rsync videos gs://<BUCKET> --recursive
+  gcloud run services update <SERVICE> --region <REGION>     --add-volume=name=vids,type=cloud-storage,bucket=<BUCKET>,readonly=true     --add-volume-mount=volume=vids,mount-path=/videos     --update-env-vars KIS_VIDEO_DIR=/videos,KIS_FETCH=0
+
+NOTE
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
 echo
