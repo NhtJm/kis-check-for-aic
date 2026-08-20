@@ -1,0 +1,9 @@
+videos/
+media-info/
+.git/
+.env
+__pycache__/
+*-scored.*
+viewer_template.html
+build_viewer.py
+fetch_videos.py

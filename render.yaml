@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: kis-check-for-aic
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/status
+    envVars:
+      - key: KIS_BACKENDS
+        value: api
+      - key: KIS_FETCH
+        value: "1"
+      - key: KIS_VIDEO_CACHE_MB
+        value: "800"
+      # Ba bien duoi dat trong dashboard cua Render, KHONG ghi vao file nay
+      - key: KIS_API_BASE
+        sync: false
+      - key: KIS_API_KEY
+        sync: false
+      - key: KIS_API_MODEL
+        sync: false

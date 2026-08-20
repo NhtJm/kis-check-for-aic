@@ -83,7 +83,12 @@ template = open("viewer_template.html", encoding="utf-8").read()
 html = template.replace("__PAYLOAD__", json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 open(OUT_PATH, "w", encoding="utf-8").write(html)
 
+# index gon mot file de server dung khi deploy (media-info/ khong len git)
+with open("media-index.json", "w", encoding="utf-8") as f:
+    json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
+
 print(f"Da tao {OUT_PATH}  ({len(html)/1024:.0f} KB)")
+print(f"Da tao media-index.json  ({os.path.getsize('media-index.json')/1024:.0f} KB)")
 print(f"  index: {len(index)} video tu {MEDIA_DIR}/")
 if initial:
     print(f"  nap san: {initial['source']} ({len(initial['rows'])} entry)")

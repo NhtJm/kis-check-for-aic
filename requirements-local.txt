@@ -1,0 +1,5 @@
+# Ban chay o may: them SigLIP de cham diem mien phi tren GPU/MPS
+-r requirements.txt
+torch>=2.2
+transformers>=4.45
+sentencepiece>=0.2

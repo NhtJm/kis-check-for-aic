@@ -99,3 +99,56 @@ nó còn nguyên độ phân giải. Rê chuột lên badge % để xem.
 
 Câu query nên viết **tiếng Việt**: cùng một nội dung, bản tiếng Việt cho 99.9%
 còn bản tiếng Anh chỉ 13.2%.
+
+## Deploy lên container host
+
+Bản GitHub Pages là **trang tĩnh** — không có server nên không có chỗ đặt `.env`,
+và thanh query tự ẩn. Muốn chấm điểm trên bản deploy thì cần host chạy được Python.
+
+Repo đã có sẵn `Dockerfile` và `render.yaml`.
+
+### Ba ràng buộc đã được xử lý sẵn
+
+**RAM.** SigLIP cần ~1.5GB, free tier thường chỉ 512MB. `Dockerfile` vì vậy đặt
+`KIS_BACKENDS=api` và **không cài torch** — image còn ~400MB thay vì ~3GB.
+Server từ chối thẳng request xin chạy `siglip`, không để nó OOM giữa chừng.
+
+**Video.** 380MB không bán vào image được, nên `KIS_FETCH=1` bật chế độ tải theo
+yêu cầu: thiếu video nào thì `yt-dlp` kéo bản 360p về `/tmp`, dùng xong giữ lại
+làm cache, vượt `KIS_VIDEO_CACHE_MB` thì xoá cái lâu không đụng nhất.
+Lần đầu chạm một video mất ~5-20s, các lần sau tức thì.
+
+Luôn tải **nguyên video** chứ không cắt đoạn — cắt đoạn làm frame đánh số lại từ 0
+và chỗ cắt bám theo keyframe, khiến chỉ số frame lệch đi.
+
+**media-info.** Thư mục 873 file không lên git, nên `build_viewer.py` xuất kèm
+`media-index.json` (192KB) — server dùng file này để tra video ID ra link YouTube.
+Nhớ chạy lại `build_viewer.py` và commit `media-index.json` khi dataset đổi.
+
+### Các bước
+
+1. Trên Render: **New → Web Service**, trỏ vào repo này, chọn runtime **Docker**.
+2. Vào tab **Environment**, thêm ba biến (đặt ở dashboard, **không** đưa `.env` lên git):
+
+   | Key | Value |
+   |---|---|
+   | `KIS_API_BASE` | `https://agentrouter.org/v1` |
+   | `KIS_API_KEY` | khoá của bạn |
+   | `KIS_API_MODEL` | `claude-opus-5` |
+
+3. Deploy. Kiểm tra `/api/status` — `"api": true` và `"backends": ["api"]` là đúng.
+
+Free tier của Render ngủ sau 15 phút không ai dùng, request đầu sau đó mất ~30s để
+đánh thức, và mỗi lần ngủ dậy là `/tmp` trống nên video phải tải lại.
+
+### Chi phí
+
+Theo công thức của Agent Router `(prompt + completion × completion_ratio) / 500000`,
+với `claude-opus-5` (ratio 1, completion ratio 5), cửa sổ ±90 frame bước 30:
+
+| Chế độ | Số request | Ước tính mỗi lần chạy 100 dòng |
+|---|---|---|
+| `hybrid` (chỉ chạy được ở local) | ~140 | ~$0.15 |
+| `api` | ~700 | ~$0.77 |
+
+Muốn rẻ hơn thì giảm cửa sổ: `--window 30 --step 30` còn 3 frame mỗi dòng thay vì 7.

@@ -1,0 +1,5 @@
+# Ban deploy: chi cham diem qua API, khong can torch (image ~400MB thay vi ~3GB)
+yt-dlp>=2025.1.1
+numpy>=1.23
+opencv-python-headless>=4.8
+Pillow>=10.0

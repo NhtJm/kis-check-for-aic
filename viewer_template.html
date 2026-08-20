@@ -693,11 +693,11 @@ fetch('/api/status').then(r => r.json()).then(j => {
   if(!j.ok) return;
   apiOn = true;
   document.body.classList.add('api');
-  if(j.api){
-    [...$('#backend').options].forEach(o => o.disabled = false);
-    $('#backend').value = 'hybrid';
-  }
-  setQ(j.videos.length + ' video sẵn sàng'
+  const allowed = j.backends || (j.api ? ['siglip','hybrid','api'] : ['siglip']);
+  [...$('#backend').options].forEach(o => o.disabled = !allowed.includes(o.value));
+  if(!allowed.includes($('#backend').value)) $('#backend').value = allowed[0] || 'siglip';
+  else if(allowed.includes('hybrid')) $('#backend').value = 'hybrid';
+  setQ((j.fetch ? 'tải video theo yêu cầu' : j.videos.length + ' video sẵn sàng')
        + (j.api ? ' · API: ' + j.api_model : ' · chưa cấu hình API'), '');
 }).catch(() => { apiOn = false; });   // ban tinh (GitHub Pages) -> an thanh query
 

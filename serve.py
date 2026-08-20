@@ -19,6 +19,11 @@ api_backend.load_dotenv()      # nap .env ngay khi khoi dong
 ROOT = os.path.dirname(os.path.abspath(__file__))
 _lock = threading.Lock()          # model khong an toan da luong -> cham diem tuan tu
 
+# Cau hinh khi deploy. Tren host nho: KIS_BACKENDS=api va KIS_FETCH=1
+BACKENDS = [b.strip() for b in os.environ.get("KIS_BACKENDS", "siglip,hybrid,api").split(",") if b.strip()]
+FETCH    = os.environ.get("KIS_FETCH", "0") not in ("0", "", "false", "False")
+VIDEODIR = os.environ.get("KIS_VIDEO_DIR", os.path.join(ROOT, "videos"))
+
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
@@ -39,11 +44,13 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?")[0] == "/api/status":
-            vids = sorted(f[:-4] for f in os.listdir(os.path.join(ROOT, "videos"))
-                          if f.endswith(".mp4")) if os.path.isdir(os.path.join(ROOT, "videos")) else []
+            vids = sorted(f[:-4] for f in os.listdir(VIDEODIR)
+                          if f.endswith(".mp4")) if os.path.isdir(VIDEODIR) else []
             api_ok = all(os.environ.get(k) for k in ("KIS_API_BASE", "KIS_API_KEY", "KIS_API_MODEL"))
+            allowed = [b for b in BACKENDS if b == "siglip" or api_ok]
             return self._json(200, {"ok": True, "videos": vids, "model": score_query.MODEL_ID,
-                                    "api": api_ok, "api_model": os.environ.get("KIS_API_MODEL", "")})
+                                    "api": api_ok, "api_model": os.environ.get("KIS_API_MODEL", ""),
+                                    "backends": allowed, "fetch": FETCH})
         return super().do_GET()
 
     def do_POST(self):
@@ -61,15 +68,18 @@ class Handler(SimpleHTTPRequestHandler):
 
             window  = int(req.get("window", 90))
             step    = max(1, int(req.get("step", 30)))
-            backend = req.get("backend", "siglip")
+            backend = req.get("backend", BACKENDS[0] if BACKENDS else "siglip")
+            if backend not in BACKENDS:
+                return self._json(400, {"ok": False,
+                                        "error": f"backend '{backend}' khong duoc bat tren server nay"})
             topk    = int(req.get("topk", 20))
             sys.stderr.write(f"\n[score] {len(rows)} dong · window ±{window} · step {step} · query={query!r}\n")
 
             with _lock:
-                res, offsets = score_query.run(rows, query, window, step,
-                                               os.path.join(ROOT, "videos"),
+                res, offsets = score_query.run(rows, query, window, step, VIDEODIR,
                                                backend=backend, topk=topk,
-                                               log=lambda m: sys.stderr.write(m + "\n"))
+                                               log=lambda m: sys.stderr.write(m + "\n"),
+                                               fetch_missing=FETCH, root=ROOT)
             return self._json(200, {
                 "ok": True, "query": query, "offsets": offsets,
                 "rows": [[r["video"], r["frame"], r["score"], r["best_off"],
@@ -81,8 +91,9 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8777)
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8777)))
+    ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     a = ap.parse_args()
-    print(f"KIS Checker: http://localhost:{a.port}/   (Ctrl+C de dung)")
-    print(f"Model: {score_query.MODEL_ID}")
-    ThreadingHTTPServer(("127.0.0.1", a.port), Handler).serve_forever()
+    print(f"KIS Checker: http://{a.host}:{a.port}/   (Ctrl+C de dung)")
+    print(f"Backends bat: {', '.join(BACKENDS)} · tai video theo yeu cau: {'co' if FETCH else 'khong'}")
+    ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()

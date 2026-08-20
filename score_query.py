@@ -97,7 +97,7 @@ def read_submission(path):
 
 
 def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
-        backend="siglip", topk=20, log=print):
+        backend="siglip", topk=20, log=print, fetch_missing=False, root="."):
     """backend: 'siglip' (local, mien phi) | 'api' (VLM qua router) | 'hybrid' (loc bang
     SigLIP roi cho VLM cham lai topk dong dau -- re va chinh xac nhat)."""
     offsets = list(range(-window, window + 1, step)) if window > 0 else [0]
@@ -112,6 +112,9 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
     frames, totals = {}, {}
     for vid in sorted(need):
         path = os.path.join(video_dir, vid + ".mp4")
+        if not os.path.exists(path) and fetch_missing:
+            import video_cache
+            path = video_cache.ensure(vid, video_dir, root, keep=need.keys(), log=log) or path
         if not os.path.exists(path):
             log(f"  {vid}: THIEU file video, bo qua")
             frames[vid], totals[vid] = {}, 0
@@ -199,12 +202,14 @@ def main():
     ap.add_argument("--backend", default="siglip", choices=["siglip", "api", "hybrid"],
                     help="siglip=local mien phi · api=VLM cham het · hybrid=SigLIP loc roi VLM cham topk")
     ap.add_argument("--topk", type=int, default=20, help="so dong VLM cham lai o che do hybrid")
+    ap.add_argument("--fetch", action="store_true", help="tu tai video con thieu")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
     rows = read_submission(a.csv)
     print(f"{len(rows)} dong tu {a.csv}")
-    res, offsets = run(rows, a.query, a.window, a.step, a.videos, a.model, a.backend, a.topk)
+    res, offsets = run(rows, a.query, a.window, a.step, a.videos, a.model, a.backend, a.topk,
+                       fetch_missing=a.fetch)
 
     base = a.out or os.path.splitext(os.path.basename(a.csv))[0] + "-scored"
     payload = {"query": a.query, "fps": a.fps, "window": a.window, "step": a.step,
