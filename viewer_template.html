@@ -56,6 +56,29 @@
   #drop div{border:2px dashed var(--accent);border-radius:16px;padding:52px 76px;
         font-size:17px;font-weight:600;color:var(--accent)}
 
+  /* ---------- thanh query ---------- */
+  .qbar{display:none;align-items:center;gap:9px;padding:9px 14px;background:var(--panel2);
+        border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
+  body.api .qbar{display:flex}
+  .qbar input[type=text]{flex:1;min-width:230px;background:var(--panel);border:1px solid var(--line);
+        color:var(--fg);border-radius:7px;padding:7px 11px;font-size:13px;font-family:inherit}
+  .qbar input[type=text]:focus{outline:0;border-color:var(--accent)}
+  .qbar input[type=number]{width:56px;background:var(--panel);border:1px solid var(--line);color:var(--fg);
+        border-radius:6px;padding:5px 7px;font-family:var(--mono);font-size:12px}
+  .qbar select{background:var(--panel);border:1px solid var(--line);color:var(--fg);
+        border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;cursor:pointer}
+  .qbar select option:disabled{color:var(--faint)}
+  #qstatus{font-size:12px;color:var(--dim);font-family:var(--mono);white-space:nowrap}
+  #qstatus.err{color:var(--no)}
+  #qstatus.run{color:var(--maybe)}
+
+  .badge{font-family:var(--mono);font-size:11px;font-weight:650;padding:2px 6px;border-radius:5px;
+         background:var(--panel2);border:1px solid var(--line);color:var(--faint);white-space:nowrap}
+  .badge.hot{background:#0d3b2c;border-color:var(--ok);color:#6ee7b7}
+  .badge.mid{background:#3d2f08;border-color:#8a6d12;color:#fcd34d}
+  .row .right{display:flex;align-items:center;gap:8px}
+  .offnote{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+
   /* ---------- layout ---------- */
   main{flex:1;display:grid;grid-template-columns:392px 1fr;min-height:0}
   #list{border-right:1px solid var(--line);overflow-y:auto;background:var(--panel)}
@@ -162,6 +185,7 @@
     <button role="tab" data-view="top10" aria-selected="true">Top 10</button>
     <button role="tab" data-view="all" aria-selected="false">Tất cả</button>
     <button role="tab" data-view="byvideo" aria-selected="false">Theo video</button>
+    <button role="tab" data-view="byscore" aria-selected="false" id="tabscore" style="display:none">Theo điểm</button>
   </div>
   <label class="ctl">fps <input type="number" id="fps" step="0.01" min="1"></label>
   <label class="ctl chk" title="Bật: chọn kết quả là phát ngay. Tắt: video đứng sẵn ở đúng frame, bấm mới chạy.">
@@ -177,6 +201,20 @@
   <button class="btn" id="export">Xuất CSV</button>
   <button class="btn" id="reset">Xoá đánh dấu</button>
 </header>
+
+<div class="qbar">
+  <span class="lbl" style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em">Query</span>
+  <input type="text" id="query" placeholder="Mô tả cảnh cần tìm — vd: bốn phi hành gia mặc áo đen đứng trước tàu vũ trụ">
+  <label class="ctl">± <input type="number" id="win" value="90" min="0" step="30"> frame</label>
+  <label class="ctl">bước <input type="number" id="stp" value="30" min="1" step="10"></label>
+  <select id="backend" title="Chọn nơi chấm điểm">
+    <option value="siglip">SigLIP (local, miễn phí)</option>
+    <option value="hybrid" disabled>Hybrid: SigLIP lọc → VLM chấm top 20</option>
+    <option value="api" disabled>VLM chấm hết (chậm &amp; tốn)</option>
+  </select>
+  <button class="btn primary" id="run">Chấm điểm</button>
+  <span id="qstatus"></span>
+</div>
 
 <main>
   <div id="empty">
@@ -207,6 +245,7 @@
         <span class="pill" id="p-frame">—</span>
         <span class="pill hi" id="p-time">—</span>
         <span class="pill bad" id="p-bad" style="display:none">không xem được</span>
+        <span class="pill" id="p-score" style="display:none">—</span>
       </div>
       <div class="mtitle" id="p-title">—</div>
       <div class="msub" id="p-sub"></div>
@@ -261,6 +300,9 @@ let broken  = Object.assign({}, DATA.status || {});   // {video: 'private'|'remo
 let marks   = {};
 let pending = null;          // File dang cho bam "Nap"
 let autoplay = localStorage.getItem('kis-autoplay') === '1';
+let scores = {};             // chi so dong -> {p, bestOff, bestP, meanP, cos}
+let maxP   = 0;              // diem cao nhat, dung de to mau tuong doi
+let apiOn  = false;          // co server local de cham diem khong
 
 let player = null, apiReady = false, loadedVid = null, queued = null;
 
@@ -268,7 +310,13 @@ const secOf = e => e.frame / fps;
 const mmss  = s => (s < 0 ? '-' : '') + Math.floor(Math.abs(s)/60) + ':'
                  + String(Math.floor(Math.abs(s)%60)).padStart(2,'0');
 const key   = () => 'kis-marks:' + source;
-const rowsOf = () => view === 'top10' ? entries.slice(0,10) : entries;
+const rowsOf = () => view === 'top10' ? entries.slice(0,10)
+                  : view === 'byscore'
+                    ? entries.slice().sort((a,b) => {
+                        const x = scores[a.rank-1], y = scores[b.rank-1];
+                        return ((y?.p ?? -1) - (x?.p ?? -1)) || ((y?.cos ?? -1) - (x?.cos ?? -1));
+                      })
+                    : entries;
 
 /* ---------- nap CSV ---------- */
 function parseCSV(text){
@@ -300,6 +348,9 @@ function loadRows(rows, name){
   order.forEach(v => stat[v] = {count:freq[v], bestRank:best[v]});
 
   marks = JSON.parse(localStorage.getItem(key()) || '{}');
+  scores = {}; maxP = 0;
+  $('#tabscore').style.display = 'none';
+  if(view === 'byscore'){ view = 'top10'; syncTabs(); }
   const miss = order.filter(v => !MEDIA[v]);
 
   document.body.classList.remove('empty');
@@ -417,7 +468,8 @@ function rowEl(e, i){
   el.dataset.i = i;
   el.setAttribute('aria-current', i === cur);
   el.innerHTML = '<div class="rank"></div>'
-    + '<div class="rmain"><div class="rvid"></div><div class="rsub"></div></div><div class="dot"></div>';
+    + '<div class="rmain"><div class="rvid"></div><div class="rsub"></div></div>'
+    + '<div class="right"><span class="badge" style="display:none"></span><div class="dot"></div></div>';
   el.querySelector('.rank').textContent = '#' + e.rank;
   el.querySelector('.rvid').textContent = e.video;
   const bad = !MEDIA[e.video] ? ' <span class="warn">⚠ thiếu media-info</span>'
@@ -425,6 +477,18 @@ function rowEl(e, i){
   el.querySelector('.rsub').innerHTML =
     'frame ' + e.frame + ' → <span class="t">' + mmss(secOf(e)) + '</span>' + bad;
   if(marks[i]) el.querySelector('.dot').classList.add(marks[i]);
+  const sc = scores[i];
+  if(sc && sc.p != null){
+    const b = el.querySelector('.badge');
+    b.style.display = '';
+    b.textContent = (sc.p*100).toFixed(1) + '%';
+    const rel = maxP > 0 ? sc.p / maxP : 0;
+    b.className = 'badge' + (rel >= 0.8 ? ' hot' : rel >= 0.4 ? ' mid' : '');
+    b.title = 'cosine ' + (sc.cos != null ? sc.cos.toFixed(4) : '–')
+            + (sc.bestOff ? '\nCao nhất trong cửa sổ: ' + (sc.bestP*100).toFixed(1)
+                          + '% ở lệch ' + (sc.bestOff > 0 ? '+' : '') + sc.bestOff + ' frame'
+                          : '\nĐúng frame này là cao nhất trong cửa sổ');
+  }
   el.onclick = () => select(i);
   return el;
 }
@@ -438,6 +502,19 @@ function select(i){
   $('#p-frame').textContent = 'frame ' + e.frame;
   $('#p-time').textContent  = mmss(t) + ' (' + t.toFixed(2) + 's)';
   $('#p-bad').style.display = broken[e.video] ? '' : 'none';
+  const sc = scores[i];
+  const sp = $('#p-score');
+  if(sc && sc.p != null){
+    sp.style.display = '';
+    sp.textContent = 'khớp ' + (sc.p*100).toFixed(1) + '%'
+      + (sc.bestOff ? ' · cao nhất ' + (sc.bestP*100).toFixed(1) + '% ở lệch '
+                      + (sc.bestOff > 0 ? '+' : '') + sc.bestOff + ' frame ('
+                      + (sc.bestOff/fps >= 0 ? '+' : '') + (sc.bestOff/fps).toFixed(1) + 's)'
+                    : ' · đúng frame này là cao nhất')
+      + (sc.cos != null ? ' · cos ' + sc.cos.toFixed(4) : '');
+    const rel = maxP > 0 ? sc.p/maxP : 0;
+    sp.style.borderColor = rel >= 0.8 ? 'var(--ok)' : rel >= 0.4 ? '#8a6d12' : 'var(--line)';
+  } else sp.style.display = 'none';
   $('#p-title').textContent = v ? v.title : '(thiếu media-info cho ' + e.video + ')';
   $('#p-sub').textContent   = v ? v.author + ' · đăng ' + v.date + ' · dài ' + mmss(v.length)
                                   + ' · vị trí ' + (t/v.length*100).toFixed(1) + '% video' : '';
@@ -479,10 +556,12 @@ function step(d){
 }
 
 /* ---------- events ---------- */
+function syncTabs(){
+  document.querySelectorAll('[data-view]').forEach(x =>
+    x.setAttribute('aria-selected', x.dataset.view === view));
+}
 document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
-  view = b.dataset.view;
-  document.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-selected', x === b));
-  render();
+  view = b.dataset.view; syncTabs(); render();
 });
 document.querySelectorAll('.nudge').forEach(b => b.onclick = () => {
   if(apiReady) player.seekTo(Math.max(0, player.getCurrentTime() + (+b.dataset.d)), true);
@@ -526,6 +605,55 @@ $('#export').onclick = () => {
   URL.revokeObjectURL(a.href);
 };
 
+async function runScoring(){
+  if(!entries.length){ setQ('chưa nạp CSV', 'err'); return; }
+  const q = $('#query').value.trim();
+  if(!q){ setQ('nhập câu query đã', 'err'); $('#query').focus(); return; }
+  const win = Math.max(0, parseInt($('#win').value) || 0);
+  const stp = Math.max(1, parseInt($('#stp').value) || 30);
+  const nf  = entries.length * (win > 0 ? Math.floor(win*2/stp) + 1 : 1);
+  const be  = $('#backend').value;
+  if(be !== 'siglip' && !confirm('Chế độ "' + $('#backend').selectedOptions[0].text
+      + '" gọi API tính phí.\nƯớc tính ' + (be === 'api' ? '~' + nf : '~140')
+      + ' request. Tiếp tục?')) return;
+
+  $('#run').disabled = true;
+  setQ('đang chấm ~' + nf + ' frame, chờ chút…', 'run');
+  const t0 = Date.now();
+  try{
+    const r = await fetch('/api/score', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({query:q, window:win, step:stp,
+                            backend: $('#backend').value, topk: 20,
+                            rows: entries.map(e => [e.video, e.frame])})
+    });
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || 'lỗi không rõ');
+
+    scores = {}; maxP = 0;
+    j.rows.forEach((row, i) => {
+      const [ , , p, bestOff, bestP, meanP, cos] = row;
+      scores[i] = {p, bestOff, bestP, meanP, cos};
+      if(p != null && p > maxP) maxP = p;
+    });
+    $('#tabscore').style.display = '';
+    const secs = ((Date.now()-t0)/1000).toFixed(0);
+    const nOk = Object.values(scores).filter(x => x.p != null).length;
+    setQ('xong ' + nOk + '/' + entries.length + ' dòng · ' + secs + 's · cao nhất '
+         + (maxP*100).toFixed(1) + '%', '');
+    view = 'byscore'; syncTabs(); render();
+    const best = rowsOf()[0];
+    if(best) select(best.rank - 1);
+  }catch(err){
+    setQ('lỗi: ' + err.message, 'err');
+  }finally{
+    $('#run').disabled = false;
+  }
+}
+function setQ(msg, cls){ const el = $('#qstatus'); el.textContent = msg; el.className = cls || ''; }
+$('#run').onclick = runScoring;
+$('#query').onkeydown = ev => { if(ev.key === 'Enter'){ ev.preventDefault(); runScoring(); } };
+
 document.onkeydown = ev => {
   if(ev.target.tagName === 'INPUT' || !entries.length) return;
   const k = ev.key;
@@ -561,6 +689,18 @@ if(DATA.initial){
   $('#fname').classList.add('set');
   loadRows(DATA.initial.rows.map(r => ({video:r[0], frame:r[1]})), DATA.initial.source);
 }
+fetch('/api/status').then(r => r.json()).then(j => {
+  if(!j.ok) return;
+  apiOn = true;
+  document.body.classList.add('api');
+  if(j.api){
+    [...$('#backend').options].forEach(o => o.disabled = false);
+    $('#backend').value = 'hybrid';
+  }
+  setQ(j.videos.length + ' video sẵn sàng'
+       + (j.api ? ' · API: ' + j.api_model : ' · chưa cấu hình API'), '');
+}).catch(() => { apiOn = false; });   // ban tinh (GitHub Pages) -> an thanh query
+
 const s = document.createElement('script');
 s.src = 'https://www.youtube.com/iframe_api';
 document.head.appendChild(s);
