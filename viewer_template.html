@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KIS Submission Checker</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d0f13; --panel:#14171d; --panel2:#191d25; --line:#252b35;
+    --fg:#e7eaf0; --dim:#8e97a6; --faint:#5d6675;
+    --accent:#4c9dff; --ok:#34d399; --no:#f87171; --maybe:#fbbf24;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       display:flex;flex-direction:column;overflow:hidden}
+
+  header{display:flex;align-items:center;gap:14px;padding:9px 14px;background:var(--panel);
+         border-bottom:1px solid var(--line);flex-wrap:wrap;flex:none}
+  .brand{font-weight:650;letter-spacing:-.01em;white-space:nowrap;font-size:14px}
+  .brand small{display:block;font-weight:400;font-size:11px;color:var(--faint);font-family:var(--mono)}
+  .sep{width:1px;height:26px;background:var(--line)}
+  .ctl{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim)}
+  .ctl input[type=number]{width:60px;background:var(--panel2);border:1px solid var(--line);color:var(--fg);
+         border-radius:6px;padding:5px 7px;font-family:var(--mono);font-size:12px}
+  .tabs{display:flex;gap:2px;background:var(--panel2);padding:3px;border-radius:8px;border:1px solid var(--line)}
+  .tabs button{background:none;border:0;color:var(--dim);padding:5px 11px;border-radius:6px;
+         font-size:12px;font-weight:550;cursor:pointer;font-family:inherit}
+  .tabs button:hover{color:var(--fg)}
+  .tabs button[aria-selected=true]{background:var(--accent);color:#04101f}
+  .spacer{flex:1}
+  .tally{display:flex;gap:11px;font-family:var(--mono);font-size:12px;color:var(--dim);white-space:nowrap}
+  .tally b{font-weight:600}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--fg);padding:6px 12px;
+       border-radius:7px;font-size:12px;font-weight:550;cursor:pointer;font-family:inherit;white-space:nowrap;
+       text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .btn:disabled:hover{border-color:var(--line);color:var(--fg)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#04101f}
+  .btn.primary:hover{filter:brightness(1.12);color:#04101f}
+  .btn.primary:disabled{background:var(--panel2);border-color:var(--line);color:var(--fg)}
+
+  /* ---------- loader ---------- */
+  .loader{display:flex;align-items:center;gap:8px}
+  .fname{font-family:var(--mono);font-size:12px;color:var(--dim);max-width:190px;
+         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fname.set{color:var(--accent)}
+
+  #drop{position:fixed;inset:0;z-index:50;background:rgba(10,13,18,.93);display:none;
+        align-items:center;justify-content:center;pointer-events:none}
+  #drop.on{display:flex}
+  #drop div{border:2px dashed var(--accent);border-radius:16px;padding:52px 76px;
+        font-size:17px;font-weight:600;color:var(--accent)}
+
+  /* ---------- layout ---------- */
+  main{flex:1;display:grid;grid-template-columns:392px 1fr;min-height:0}
+  #list{border-right:1px solid var(--line);overflow-y:auto;background:var(--panel)}
+  #stage{display:flex;flex-direction:column;min-width:0;overflow-y:auto}
+  body.empty main{grid-template-columns:1fr}
+  body.empty #list,body.empty #stage{display:none}
+
+  /* ---------- empty state ---------- */
+  #empty{display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+         padding:40px;text-align:center}
+  body.empty #empty{display:flex}
+  #empty h2{font-size:19px;font-weight:650}
+  #empty p{color:var(--dim);font-size:13px;max-width:440px;line-height:1.7}
+  #empty code{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);
+         padding:1px 6px;border-radius:5px;font-size:12px;color:var(--fg)}
+  .zone{border:2px dashed var(--line);border-radius:14px;padding:34px 56px;display:flex;
+        flex-direction:column;align-items:center;gap:13px;cursor:pointer}
+  .zone:hover{border-color:var(--accent)}
+
+  /* ---------- list ---------- */
+  .row{display:grid;grid-template-columns:38px 1fr auto;gap:10px;align-items:center;
+       padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;border-left:3px solid transparent}
+  .row:hover{background:var(--panel2)}
+  .row[aria-current=true]{background:#1b2534;border-left-color:var(--accent)}
+  .rank{font-family:var(--mono);font-size:12px;color:var(--faint);text-align:right}
+  .row[aria-current=true] .rank{color:var(--accent)}
+  .rmain{min-width:0}
+  .rvid{font-family:var(--mono);font-size:13px;font-weight:600}
+  .rsub{font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:1px}
+  .rsub .t{color:var(--accent)}
+  .warn{color:var(--no);font-size:11px;margin-left:5px}
+  .dot{width:9px;height:9px;border-radius:50%;background:#333a46}
+  .dot.ok{background:var(--ok)} .dot.no{background:var(--no)} .dot.maybe{background:var(--maybe)}
+
+  .ghead{padding:9px 12px;background:var(--panel2);border-bottom:1px solid var(--line);
+         position:sticky;top:0;z-index:2;display:flex;align-items:baseline;gap:8px}
+  .ghead .gv{font-family:var(--mono);font-weight:650;font-size:13px}
+  .ghead .gm{font-size:11px;color:var(--dim)}
+  .ghead .gt{font-size:11px;color:var(--faint);margin-left:auto;max-width:145px;overflow:hidden;
+         text-overflow:ellipsis;white-space:nowrap}
+
+  /* ---------- player ---------- */
+  .pwrap{background:#000;position:relative;width:100%;aspect-ratio:16/9;max-height:60vh;flex:none}
+  .pwrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  #fallback{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;
+       justify-content:center;gap:14px;background:#0a0c10;text-align:center;padding:24px;z-index:3}
+  #fallback.on{display:flex}
+  #fallback p{color:var(--dim);font-size:13px;max-width:420px}
+
+  .meta{padding:13px 18px;border-bottom:1px solid var(--line)}
+  .mtop{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:5px}
+  .pill{font-family:var(--mono);font-size:12px;background:var(--panel2);border:1px solid var(--line);
+        padding:2px 8px;border-radius:5px;color:var(--dim)}
+  .pill.hi{background:#12304f;border-color:#2b5c8f;color:#9ecbff}
+  .pill.bad{background:#3a1416;border-color:#7d2b2e;color:#ffb3b3}
+  .mtitle{font-size:15px;font-weight:600;line-height:1.4}
+  .msub{font-size:12px;color:var(--dim);margin-top:4px}
+
+  .bar{display:flex;gap:8px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .bar .lbl{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+  .nudge{background:var(--panel2);border:1px solid var(--line);color:var(--fg);min-width:44px;height:30px;
+         border-radius:6px;font-family:var(--mono);font-size:12px;cursor:pointer;padding:0 6px}
+  .nudge:hover{border-color:var(--accent);color:var(--accent)}
+  .clock{font-family:var(--mono);font-size:12px;color:var(--dim);margin-left:4px}
+  .clock b{color:var(--fg);font-weight:600}
+  .drift{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;background:var(--panel2)}
+  .drift.good{color:var(--ok)} .drift.warn{color:var(--maybe)}
+
+  .mark{border:1px solid var(--line);background:var(--panel2);color:var(--dim);padding:7px 14px;
+        border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+  .mark[aria-pressed=true].ok{background:var(--ok);border-color:var(--ok);color:#052e20}
+  .mark[aria-pressed=true].no{background:var(--no);border-color:var(--no);color:#40100f}
+  .mark[aria-pressed=true].maybe{background:var(--maybe);border-color:var(--maybe);color:#3d2a03}
+
+  .hint{padding:11px 18px;font-size:11.5px;color:var(--faint);line-height:1.9}
+  kbd{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;
+      border-radius:4px;padding:1px 5px;font-size:11px;color:var(--dim)}
+
+  @media (max-width:900px){
+    main{grid-template-columns:1fr;grid-template-rows:1fr auto}
+    #list{border-right:0;border-top:1px solid var(--line);max-height:36vh;order:2}
+    #stage{order:1}
+    .fname{max-width:110px}
+  }
+</style>
+</head>
+<body class="empty">
+
+<div id="drop"><div>Thả file CSV vào đây</div></div>
+
+<header>
+  <div class="brand">KIS Submission Checker<small id="src">chưa nạp dữ liệu</small></div>
+
+  <div class="sep"></div>
+  <div class="loader">
+    <input type="file" id="file" accept=".csv,text/csv,text/plain" hidden>
+    <button class="btn" id="pick">📂 Chọn file CSV…</button>
+    <span class="fname" id="fname">chưa chọn</span>
+    <button class="btn primary" id="load" disabled>Nạp</button>
+  </div>
+
+  <div class="sep"></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-view="top10" aria-selected="true">Top 10</button>
+    <button role="tab" data-view="all" aria-selected="false">Tất cả</button>
+    <button role="tab" data-view="byvideo" aria-selected="false">Theo video</button>
+  </div>
+  <label class="ctl">fps <input type="number" id="fps" step="0.01" min="1"></label>
+
+  <div class="spacer"></div>
+  <div class="tally">
+    <span style="color:var(--ok)">✓ <b id="nok">0</b></span>
+    <span style="color:var(--no)">✗ <b id="nno">0</b></span>
+    <span style="color:var(--maybe)">? <b id="nmb">0</b></span>
+    <span>/ <b id="ntotal">0</b></span>
+  </div>
+  <button class="btn" id="export">Xuất CSV</button>
+  <button class="btn" id="reset">Xoá đánh dấu</button>
+</header>
+
+<main>
+  <div id="empty">
+    <div class="zone" id="zone">
+      <div style="font-size:34px">📄</div>
+      <h2>Nạp file CSV submission</h2>
+      <p>Kéo thả file vào đây, hoặc bấm để chọn — rồi bấm <b>Nạp</b>.</p>
+    </div>
+    <p>Định dạng mỗi dòng: <code>L21_V015,25725</code> — mã video và số frame.
+       Frame được đổi ra thời gian theo fps ở thanh trên (mặc định 30).</p>
+  </div>
+
+  <div id="list"></div>
+
+  <div id="stage">
+    <div class="pwrap">
+      <div id="player"></div>
+      <div id="fallback">
+        <p id="fbmsg">Video này không phát được.</p>
+        <a class="btn primary" id="fblink" target="_blank" rel="noopener">Mở trên YouTube đúng thời điểm ↗</a>
+      </div>
+    </div>
+
+    <div class="meta">
+      <div class="mtop">
+        <span class="pill" id="p-rank">—</span>
+        <span class="pill" id="p-vid">—</span>
+        <span class="pill" id="p-frame">—</span>
+        <span class="pill hi" id="p-time">—</span>
+        <span class="pill bad" id="p-bad" style="display:none">không xem được</span>
+      </div>
+      <div class="mtitle" id="p-title">—</div>
+      <div class="msub" id="p-sub"></div>
+    </div>
+
+    <div class="bar">
+      <span class="lbl">Tua</span>
+      <button class="nudge" data-d="-10">−10s</button>
+      <button class="nudge" data-d="-3">−3s</button>
+      <button class="nudge" data-d="-1">−1s</button>
+      <button class="nudge" data-d="1">+1s</button>
+      <button class="nudge" data-d="3">+3s</button>
+      <button class="nudge" data-d="10">+10s</button>
+      <button class="btn" id="play">▶ Phát</button>
+      <button class="btn" id="recenter">⟲ Về đúng frame</button>
+      <span class="clock">hiện tại <b id="now">–:–</b></span>
+      <span class="drift" id="drift">Δ 0.0s</span>
+    </div>
+
+    <div class="bar">
+      <span class="lbl">Đánh giá</span>
+      <button class="mark ok" data-m="ok" aria-pressed="false">✓ Đúng</button>
+      <button class="mark no" data-m="no" aria-pressed="false">✗ Sai</button>
+      <button class="mark maybe" data-m="maybe" aria-pressed="false">? Chưa chắc</button>
+      <div class="spacer"></div>
+      <button class="btn" id="prev">↑ Trước</button>
+      <button class="btn" id="next">↓ Sau</button>
+      <a class="btn" id="ytlink" target="_blank" rel="noopener">Mở YouTube ↗</a>
+    </div>
+
+    <div class="hint">
+      <kbd>↑</kbd><kbd>↓</kbd> hoặc <kbd>k</kbd><kbd>j</kbd> chuyển kết quả ·
+      <kbd>1</kbd> đúng · <kbd>2</kbd> sai · <kbd>3</kbd> chưa chắc ·
+      <kbd>←</kbd><kbd>→</kbd> tua 3s · <kbd>r</kbd> về đúng frame · <kbd>space</kbd> phát/dừng
+    </div>
+  </div>
+</main>
+
+<script>
+const DATA  = __PAYLOAD__;
+const MEDIA = DATA.media;
+const $ = s => document.querySelector(s);
+
+let fps     = DATA.fps;
+let view    = 'top10';
+let cur     = -1;
+let source  = null;          // ten file dang mo
+let entries = [];            // [{rank, video, frame}]
+let order   = [];            // ma video, xep theo so lan xuat hien
+let stat    = {};            // {video: {count, bestRank}}
+let broken  = Object.assign({}, DATA.status || {});   // {video: 'private'|'removed'|...}
+let marks   = {};
+let pending = null;          // File dang cho bam "Nap"
+
+let player = null, apiReady = false, loadedVid = null, queued = null;
+
+const secOf = e => e.frame / fps;
+const mmss  = s => (s < 0 ? '-' : '') + Math.floor(Math.abs(s)/60) + ':'
+                 + String(Math.floor(Math.abs(s)%60)).padStart(2,'0');
+const key   = () => 'kis-marks:' + source;
+const rowsOf = () => view === 'top10' ? entries.slice(0,10) : entries;
+
+/* ---------- nap CSV ---------- */
+function parseCSV(text){
+  const out = [];
+  text.split(/\r?\n/).forEach(line => {
+    if(!line.trim()) return;
+    const c = line.split(',');
+    if(c.length < 2) return;
+    const v = c[0].trim().replace(/^["']|["']$/g,'');
+    const f = parseInt(c[1].trim(), 10);
+    if(!v || !Number.isFinite(f)) return;      // bo qua dong header
+    out.push({video:v, frame:f});
+  });
+  return out;
+}
+
+function loadRows(rows, name){
+  if(!rows.length){ alert('Không đọc được dòng nào hợp lệ trong file này.'); return; }
+  source  = name;
+  entries = rows.map((r,i) => ({rank:i+1, video:r.video, frame:r.frame}));
+
+  const freq = {}, best = {};
+  entries.forEach(e => {
+    freq[e.video] = (freq[e.video]||0) + 1;
+    if(best[e.video] === undefined) best[e.video] = e.rank;
+  });
+  order = Object.keys(freq).sort((a,b) => freq[b]-freq[a] || best[a]-best[b]);
+  stat  = {};
+  order.forEach(v => stat[v] = {count:freq[v], bestRank:best[v]});
+
+  marks = JSON.parse(localStorage.getItem(key()) || '{}');
+  const miss = order.filter(v => !MEDIA[v]);
+
+  document.body.classList.remove('empty');
+  $('#src').textContent = source + ' · ' + entries.length + ' kết quả · ' + order.length + ' video'
+                        + (miss.length ? ' · thiếu media-info: ' + miss.length : '');
+  cur = -1;
+  render();
+  select(0);
+}
+
+function loadFile(f){
+  const r = new FileReader();
+  r.onload = () => loadRows(parseCSV(r.result), f.name);
+  r.readAsText(f);
+}
+
+$('#pick').onclick = () => $('#file').click();
+$('#zone').onclick = () => $('#file').click();
+$('#file').onchange = ev => {
+  const f = ev.target.files[0];
+  if(!f) return;
+  pending = f;
+  $('#fname').textContent = f.name;
+  $('#fname').classList.add('set');
+  $('#load').disabled = false;
+};
+$('#load').onclick = () => { if(pending) loadFile(pending); };
+
+['dragenter','dragover'].forEach(t => window.addEventListener(t, e => {
+  e.preventDefault(); $('#drop').classList.add('on');
+}));
+['dragleave','drop'].forEach(t => window.addEventListener(t, e => {
+  e.preventDefault();
+  if(t === 'dragleave' && e.relatedTarget) return;
+  $('#drop').classList.remove('on');
+}));
+window.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if(!f) return;
+  pending = f;
+  $('#fname').textContent = f.name;
+  $('#fname').classList.add('set');
+  $('#load').disabled = false;
+  loadFile(f);                        // tha file thi nap luon
+});
+
+/* ---------- YouTube ---------- */
+window.onYouTubeIframeAPIReady = function(){
+  player = new YT.Player('player', {
+    height:'100%', width:'100%',
+    playerVars:{rel:0, modestbranding:1, playsinline:1},
+    events:{
+      onReady(){ apiReady = true; if(queued !== null){ const q = queued; queued = null; seekTo(q); } },
+      onError(ev){
+        const e = entries[cur];
+        if(e){ broken[e.video] = ({101:'private',150:'private',100:'removed'})[ev.data] || 'error'; render(); }
+        showFallback(({101:'Kênh này chặn nhúng video ra ngoài YouTube.',
+                       150:'Video riêng tư hoặc bị chặn nhúng.',
+                       100:'Video đã bị gỡ khỏi YouTube.',
+                         2:'Mã video không hợp lệ.',
+                         5:'Trình phát HTML5 không tải được video.'})[ev.data]
+                     || 'Không phát được video (mã lỗi ' + ev.data + ').');
+      }
+    }
+  });
+};
+function showFallback(msg){ $('#fbmsg').textContent = msg; $('#fallback').classList.add('on'); }
+
+function seekTo(i){
+  const e = entries[i], v = MEDIA[e.video];
+  if(!v){ showFallback('Không có media-info cho ' + e.video + ' — không biết video YouTube nào.'); return; }
+  const t = secOf(e);
+  if(!apiReady){ queued = i; return; }
+  $('#fallback').classList.remove('on');
+  // Khong tu phat: chi noi tiep trang thai dang phat, con lai luon dung o dung frame.
+  const playing = player.getPlayerState && player.getPlayerState() === 1;
+  if(loadedVid !== v.yt){
+    loadedVid = v.yt;
+    (playing ? player.loadVideoById : player.cueVideoById).call(player, {videoId:v.yt, startSeconds:t});
+  }else{
+    player.seekTo(t, true);
+    if(!playing) player.pauseVideo();
+  }
+}
+
+/* ---------- render ---------- */
+function render(){
+  const list = $('#list');
+  list.innerHTML = '';
+  if(view === 'byvideo'){
+    order.forEach(vid => {
+      const v = MEDIA[vid], s = stat[vid];
+      const h = document.createElement('div');
+      h.className = 'ghead';
+      h.innerHTML = '<span class="gv"></span><span class="gm"></span><span class="gt"></span>';
+      h.querySelector('.gv').textContent = vid;
+      h.querySelector('.gm').textContent = s.count + ' kết quả · hạng tốt nhất #' + s.bestRank;
+      h.querySelector('.gt').textContent = v ? v.title : '(thiếu media-info)';
+      list.appendChild(h);
+      entries.map((e,i) => [e,i]).filter(([e]) => e.video === vid)
+        .sort((a,b) => a[0].frame - b[0].frame)
+        .forEach(([e,i]) => list.appendChild(rowEl(e,i)));
+    });
+  }else{
+    rowsOf().forEach(e => list.appendChild(rowEl(e, e.rank-1)));
+  }
+  const active = list.querySelector('[aria-current=true]');
+  if(active) active.scrollIntoView({block:'nearest'});
+  tally();
+}
+
+function rowEl(e, i){
+  const el = document.createElement('div');
+  el.className = 'row';
+  el.dataset.i = i;
+  el.setAttribute('aria-current', i === cur);
+  el.innerHTML = '<div class="rank"></div>'
+    + '<div class="rmain"><div class="rvid"></div><div class="rsub"></div></div><div class="dot"></div>';
+  el.querySelector('.rank').textContent = '#' + e.rank;
+  el.querySelector('.rvid').textContent = e.video;
+  const bad = !MEDIA[e.video] ? ' <span class="warn">⚠ thiếu media-info</span>'
+            : broken[e.video]  ? ' <span class="warn">⚠ không xem được</span>' : '';
+  el.querySelector('.rsub').innerHTML =
+    'frame ' + e.frame + ' → <span class="t">' + mmss(secOf(e)) + '</span>' + bad;
+  if(marks[i]) el.querySelector('.dot').classList.add(marks[i]);
+  el.onclick = () => select(i);
+  return el;
+}
+
+function select(i){
+  if(i < 0 || i >= entries.length) return;
+  cur = i;
+  const e = entries[i], v = MEDIA[e.video], t = secOf(e);
+  $('#p-rank').textContent  = 'hạng #' + e.rank;
+  $('#p-vid').textContent   = e.video;
+  $('#p-frame').textContent = 'frame ' + e.frame;
+  $('#p-time').textContent  = mmss(t) + ' (' + t.toFixed(2) + 's)';
+  $('#p-bad').style.display = broken[e.video] ? '' : 'none';
+  $('#p-title').textContent = v ? v.title : '(thiếu media-info cho ' + e.video + ')';
+  $('#p-sub').textContent   = v ? v.author + ' · đăng ' + v.date + ' · dài ' + mmss(v.length)
+                                  + ' · vị trí ' + (t/v.length*100).toFixed(1) + '% video' : '';
+  const url = v ? v.url + '&t=' + Math.floor(t) + 's' : '#';
+  $('#ytlink').href = url;
+  $('#fblink').href = url;
+  document.querySelectorAll('.mark').forEach(b => b.setAttribute('aria-pressed', marks[i] === b.dataset.m));
+  document.querySelectorAll('.row').forEach(r => {
+    const on = +r.dataset.i === i;
+    r.setAttribute('aria-current', on);
+    if(on) r.scrollIntoView({block:'nearest'});
+  });
+  seekTo(i);
+}
+
+function tally(){
+  const vals = Object.values(marks);
+  $('#nok').textContent = vals.filter(v => v === 'ok').length;
+  $('#nno').textContent = vals.filter(v => v === 'no').length;
+  $('#nmb').textContent = vals.filter(v => v === 'maybe').length;
+  $('#ntotal').textContent = entries.length;
+}
+
+function setMark(m){
+  if(cur < 0) return;
+  if(marks[cur] === m) delete marks[cur]; else marks[cur] = m;
+  localStorage.setItem(key(), JSON.stringify(marks));
+  document.querySelectorAll('.mark').forEach(b => b.setAttribute('aria-pressed', marks[cur] === b.dataset.m));
+  document.querySelectorAll('.row').forEach(r => {
+    if(+r.dataset.i === cur) r.querySelector('.dot').className = 'dot' + (marks[cur] ? ' ' + marks[cur] : '');
+  });
+  tally();
+}
+
+function step(d){
+  const rows = [...document.querySelectorAll('.row')].map(r => +r.dataset.i);
+  const at = rows.indexOf(cur);
+  select(rows[at < 0 ? 0 : Math.min(rows.length-1, Math.max(0, at + d))]);
+}
+
+/* ---------- events ---------- */
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
+  view = b.dataset.view;
+  document.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-selected', x === b));
+  render();
+});
+document.querySelectorAll('.nudge').forEach(b => b.onclick = () => {
+  if(apiReady) player.seekTo(Math.max(0, player.getCurrentTime() + (+b.dataset.d)), true);
+});
+document.querySelectorAll('.mark').forEach(b => b.onclick = () => setMark(b.dataset.m));
+$('#play').onclick = () => {
+  if(!apiReady) return;
+  if(player.getPlayerState() === 1){ player.pauseVideo(); }
+  else { player.playVideo(); }
+};
+$('#recenter').onclick = () => { if(cur >= 0) seekTo(cur); };
+$('#prev').onclick = () => step(-1);
+$('#next').onclick = () => step(1);
+
+$('#fps').onchange = () => {
+  const v = parseFloat($('#fps').value);
+  if(v > 0){ fps = v; render(); if(cur >= 0) select(cur); }
+};
+$('#reset').onclick = () => {
+  if(!source || !confirm('Xoá toàn bộ đánh dấu của ' + source + '?')) return;
+  marks = {}; localStorage.removeItem(key()); render(); if(cur >= 0) select(cur);
+};
+$('#export').onclick = () => {
+  if(!entries.length) return;
+  const label = {ok:'dung', no:'sai', maybe:'chua-chac'};
+  const lines = ['rank,video,frame,timestamp_s,timestamp,danh_gia,ghi_chu'];
+  entries.forEach((e,i) => {
+    const t = secOf(e);
+    lines.push([e.rank, e.video, e.frame, t.toFixed(2), mmss(t),
+                label[marks[i]] || '', broken[e.video] || (MEDIA[e.video] ? '' : 'thieu-media-info')].join(','));
+  });
+  const blob = new Blob(['﻿' + lines.join('\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = source.replace(/\.csv$/i,'') + '-check.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+document.onkeydown = ev => {
+  if(ev.target.tagName === 'INPUT' || !entries.length) return;
+  const k = ev.key;
+  if(k === 'ArrowDown' || k === 'j'){ ev.preventDefault(); step(1); }
+  else if(k === 'ArrowUp' || k === 'k'){ ev.preventDefault(); step(-1); }
+  else if(k === '1') setMark('ok');
+  else if(k === '2') setMark('no');
+  else if(k === '3') setMark('maybe');
+  else if(k === 'ArrowLeft' && apiReady){ ev.preventDefault(); player.seekTo(Math.max(0, player.getCurrentTime()-3), true); }
+  else if(k === 'ArrowRight' && apiReady){ ev.preventDefault(); player.seekTo(player.getCurrentTime()+3, true); }
+  else if(k === 'r'){ if(cur >= 0) seekTo(cur); }
+  else if(k === ' ' && apiReady){
+    ev.preventDefault();
+    player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo();
+  }
+};
+
+setInterval(() => {
+  if(!apiReady || cur < 0 || typeof player.getCurrentTime !== 'function') return;
+  $('#play').textContent = player.getPlayerState() === 1 ? '❚❚ Dừng' : '▶ Phát';
+  const now = player.getCurrentTime(), target = secOf(entries[cur]);
+  $('#now').textContent = mmss(now);
+  const d = now - target, el = $('#drift');
+  el.textContent = 'Δ ' + (d >= 0 ? '+' : '') + d.toFixed(1) + 's';
+  el.className = 'drift ' + (Math.abs(d) <= 2 ? 'good' : 'warn');
+}, 250);
+
+/* ---------- boot ---------- */
+$('#fps').value = fps;
+if(DATA.initial){
+  $('#fname').textContent = DATA.initial.source;
+  $('#fname').classList.add('set');
+  loadRows(DATA.initial.rows.map(r => ({video:r[0], frame:r[1]})), DATA.initial.source);
+}
+const s = document.createElement('script');
+s.src = 'https://www.youtube.com/iframe_api';
+document.head.appendChild(s);
+</script>
+</body>
+</html>
