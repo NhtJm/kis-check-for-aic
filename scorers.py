@@ -15,6 +15,17 @@ JINA   = "jinaai/jina-clip-v2"
 _cache = {}
 
 
+def _feat(out):
+    """transformers 4.x tra ve tensor, 5.x tra ve object -- lay tensor o ca hai ban."""
+    if hasattr(out, "pooler_output") and out.pooler_output is not None:
+        return out.pooler_output
+    if hasattr(out, "last_hidden_state"):
+        return out.last_hidden_state[:, 0]
+    if isinstance(out, (tuple, list)):
+        return out[0]
+    return out
+
+
 def _device():
     import torch
     return "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,7 +55,7 @@ class SiglipScorer:
     def text_embed(self, texts):
         t = self.proc(text=list(texts), padding="max_length", truncation=True, return_tensors="pt").to(self.dev)
         with self.torch.no_grad():
-            f = self.model.get_text_features(**t)
+            f = _feat(self.model.get_text_features(**t))
         f = f / f.norm(dim=-1, keepdim=True)
         return f.float().cpu().numpy()
 
@@ -53,7 +64,7 @@ class SiglipScorer:
         for i in range(0, len(images), batch):
             im = self.proc(images=images[i:i+batch], return_tensors="pt").to(self.dev)
             with self.torch.no_grad():
-                f = self.model.get_image_features(**im)
+                f = _feat(self.model.get_image_features(**im))
             out.append((f / f.norm(dim=-1, keepdim=True)).float().cpu().numpy())
         return np.concatenate(out) if out else np.zeros((0, 1))
 

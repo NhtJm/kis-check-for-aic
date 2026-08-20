@@ -1,0 +1,33 @@
+# Ban cho Google Cloud Run. Khac ban Spaces o vai cho quan trong:
+#   - Cloud Run dat bien PORT (mac dinh 8080), serve.py doc thang tu env
+#   - He thong file cua Cloud Run nam trong RAM, nen cache video an vao bo nho
+#     -> gioi han cache that thap va xin nhieu RAM hon
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements-local.txt requirements.txt ./
+# torch ban CPU: mac dinh tren Linux pip keo ve ban CUDA voi ~2-3GB driver nvidia
+# vo dung o day va lam image phinh to.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements-local.txt
+
+COPY *.py index.html kis-viewer.html media-index.json ./
+
+# Nap san SigLIP vao image de cold start khong phai tai 1.5GB
+ENV HF_HOME=/app/.cache/huggingface
+RUN python3 -c "import scorers; scorers.get(scorers.SIGLIP); print('siglip da nap san')"
+
+ENV HOST=0.0.0.0 \
+    PORT=8080 \
+    KIS_BACKENDS=siglip,hybrid,api \
+    KIS_FETCH=1 \
+    KIS_VIDEO_DIR=/tmp/videos \
+    KIS_VIDEO_CACHE_MB=400 \
+    KIS_MAX_FRAMES=350
+
+EXPOSE 8080
+CMD ["python3", "serve.py"]

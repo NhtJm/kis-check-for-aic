@@ -200,14 +200,23 @@ phía biến thể yếu hơn. Hãy tự đo bằng `compare.py` trên query th�
 
 ## Deploy: chọn host nào
 
-| Host | RAM free tier | SigLIP chạy được? | Ghi chú |
+| Host | Free? | SigLIP chạy được? | Ghi chú |
 |---|---|---|---|
-| **HF Spaces** | ~16GB | **có** | Dockerfile ở `deploy/Dockerfile.spaces` |
-| Render free | 512MB | không | ép dùng API, ngủ sau 15 phút |
-| Railway | — | — | không còn free tier thật, tối thiểu ~$5/tháng |
+| **Google Cloud Run** | có | **có** | 2Gi RAM là đủ, scale về 0 |
+| HF Spaces (Docker) | **không** | có | Docker Space cần PRO ~$9/tháng |
+| Render free | có | không | 512MB, ép dùng API, ngủ sau 15 phút |
+| Railway | không | — | tối thiểu ~$5/tháng |
 
-HF Spaces là lựa chọn tốt nhất cho việc này: đủ RAM chạy SigLIP nên **không tốn
-tiền API**, và ngủ sau 48h chứ không phải 15 phút.
+Cloud Run là lựa chọn tốt nhất: free tier thật, đủ RAM chạy SigLIP nên **không
+tốn tiền API**, và scale về 0 khi không ai dùng.
+
+```bash
+gcloud auth login
+gcloud config set project <PROJECT_ID>
+./deploy/cloudrun.sh
+```
+
+Đo thực tế trong container 2Gi: 30 frame mất ~40s kể cả tải video, RAM đỉnh 460MB.
 
 ```bash
 huggingface-cli login
@@ -229,3 +238,18 @@ hơn thì chạy ở máy bằng `python3 serve.py` — ở đó không có gi�
 **Nếu bạn đặt khoá API làm secret trên Space public:** ai vào cũng bấm chấm điểm
 được và tiêu credit của bạn. Hoặc để Space private, hoặc đừng đặt khoá API lên đó
 và chỉ dùng SigLIP (vốn miễn phí và là lý do chọn Spaces).
+
+### Hai lỗi chỉ lộ ra trong container
+
+Cả hai đều chạy tốt trên máy dev nhưng chết trong image sạch — nếu chưa build thử
+thì sẽ phát hiện lúc đã deploy:
+
+- **`protobuf`** — `SiglipTokenizer` cần nó, máy dev thường có sẵn qua gói khác.
+  Đã thêm vào `requirements-local.txt`.
+- **transformers 5.x** — bản 5 đổi `get_text_features` sang trả về object thay vì
+  tensor (`'BaseModelOutputWithPooling' object has no attribute 'norm'`). Máy dev
+  đang ở 4.51, container cài mới ra 5.15. `scorers._feat()` giờ xử lý được cả hai
+  bản thay vì ghim phiên bản.
+
+Ngoài ra `pip install torch` trên Linux mặc định kéo bản CUDA kèm ~2-3GB driver
+NVIDIA vô dụng trên host CPU — Dockerfile ép về index CPU.
