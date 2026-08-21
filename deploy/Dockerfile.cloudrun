@@ -15,7 +15,7 @@ COPY requirements-local.txt requirements.txt ./
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir -r requirements-local.txt
 
-COPY *.py index.html kis-viewer.html media-index.json ./
+COPY *.py *.html *.css *.js media-index.json ./
 
 # Nap san SigLIP vao image de cold start khong phai tai 1.5GB
 ENV HF_HOME=/app/.cache/huggingface

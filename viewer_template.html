@@ -1125,8 +1125,11 @@ fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken,
   [...$('#backend').options].forEach(o => o.disabled = !allowed.includes(o.value));
   if(!allowed.includes($('#backend').value)) $('#backend').value = allowed[0] || 'siglip';
   else if(allowed.includes('hybrid')) $('#backend').value = 'hybrid';
-  setQ((j.fetch ? 'tải video theo yêu cầu' : j.videos.length + ' video sẵn sàng')
-       + (j.api ? ' · API: ' + j.api_model : ' · chưa cấu hình API'), '');
+  // Noi ro day la du lieu de CHAM DIEM, khong lien quan den viec xem video:
+  // player phat thang tu YouTube trong trinh duyet, server khong tai gi ca.
+  setQ((j.fetch ? 'chấm điểm: tải frame theo yêu cầu'
+                : 'chấm điểm được ' + j.videos.length + ' video')
+       + (j.api ? ' · API: ' + j.api_model : ''), '');
 }).catch(() => { apiOn = false; });   // ban tinh (GitHub Pages) -> an thanh query
 }
 boot();
