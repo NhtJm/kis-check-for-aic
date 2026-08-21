@@ -1,0 +1,60 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trang chính — KIS Checker</title><link rel="stylesheet" href="app.css"></head><body>
+<div class="wrap">
+  <div class="nav" id="nav"></div>
+  <h1 style="margin-top:18px" id="hello">Trang chính</h1>
+  <div class="sub" id="hellosub"></div>
+  <div class="tiles" id="tiles"></div>
+  <h2>Việc của bạn</h2>
+  <div class="card"><div id="tasks" class="sub">đang tải…</div></div>
+</div>
+<script src="app.js"></script>
+<script>
+const TILES = [
+  {href:'index.html',   admin:false, b:'Kiểm tra submission', s:'Xem video đúng frame, đánh dấu đúng/sai, xuất kết quả'},
+  {href:'upload.html',  admin:false, b:'Nộp CSV',             s:'Đưa file submission lên để cả nhóm cùng kiểm tra'},
+  {href:'queries.html', admin:true,  b:'Nạp bộ câu hỏi',      s:'Dán đề thi, tách thành từng query, gắn CSV vào query'},
+  {href:'admin.html',   admin:true,  b:'Thành viên & phân việc', s:'Thêm người, đổi vai trò, chia query cho từng người'},
+];
+(async () => {
+  const me = await guard(false);
+  if(!me) return;
+  S('#hello').textContent = 'Chào ' + me.name;
+  let rd = {round:'', rounds:[]};
+  try{ rd = await jget('/api/round'); }catch(e){}
+  const lbl = (rd.rounds.find(r => r.id === rd.round) || {}).label || rd.round;
+  S('#hellosub').innerHTML = (me.role === 'admin'
+    ? 'Bạn là admin — thấy đầy đủ các trang quản trị.'
+    : 'Bạn là thành viên.') + ' Vòng đang mở: <b>' + lbl + '</b>'
+    + (me.role === 'admin' ? ' — đổi ở trang Thành viên &amp; phân việc.' : '');
+  const box = S('#tiles');
+  TILES.filter(t => !t.admin || me.role === 'admin').forEach(t => {
+    const a = document.createElement('a');
+    a.className = 'tile'; a.href = t.href;
+    a.innerHTML = '<b></b><span></span>';
+    a.querySelector('b').textContent = t.b;
+    a.querySelector('span').textContent = t.s;
+    box.appendChild(a);
+  });
+  try{
+    const j = await jget('/api/mytasks');
+    const el = S('#tasks');
+    if(!j.tasks.length){ el.textContent = 'Chưa được giao query nào.'; return; }
+    el.className = '';
+    el.innerHTML = '<table><thead><tr><th class="mono">query</th><th>loại</th>'
+      + '<th>mô tả</th><th>CSV</th></tr></thead><tbody></tbody></table>';
+    const tb = el.querySelector('tbody');
+    j.tasks.forEach(t => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td class="mono"></td><td></td><td></td><td class="mono"></td>';
+      const td = tr.children;
+      td[0].textContent = t.query.id;
+      td[1].innerHTML = '<span class="tag ' + (t.query.kind||'kis') + '">' + (t.query.kind||'kis') + '</span>';
+      td[2].textContent = (t.query.text || '').slice(0, 150);
+      td[3].textContent = t.subs.length ? t.subs.join(', ') : '—';
+      tb.appendChild(tr);
+    });
+  }catch(e){ S('#tasks').textContent = 'không tải được danh sách việc'; }
+})();
+</script></body></html>

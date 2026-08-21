@@ -1,0 +1,55 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Đăng nhập — KIS Checker</title><link rel="stylesheet" href="app.css"></head><body>
+<div class="wrap narrow" style="padding-top:11vh">
+  <h1>KIS Submission Checker</h1>
+  <div class="sub">Chọn tên của bạn rồi nhập mật khẩu chung</div>
+  <div class="card">
+    <label class="fld"><span>Bạn là ai?</span></label>
+    <div class="pick" id="pick"><span class="sub">đang tải danh sách…</span></div>
+    <label class="fld"><span>Mật khẩu chung</span>
+      <input type="password" id="pw" autocomplete="current-password" placeholder="Mật khẩu"></label>
+    <div class="msg" id="msg"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="go" disabled>Vào</button>
+      <span class="sub">Tên không có trong danh sách sẽ không vào được</span>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+<script>
+let chosen = localStorage.getItem('kis-user') || '';
+const next = new URLSearchParams(location.search).get('next') || '';
+
+function paint(names){
+  const box = S('#pick'); box.innerHTML = '';
+  names.forEach(n => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = n;
+    b.setAttribute('aria-pressed', n === chosen);
+    b.onclick = () => { chosen = n; paint(names); S('#pw').focus(); };
+    box.appendChild(b);
+  });
+  S('#go').disabled = !chosen;
+}
+
+fetch('/api/members').then(r => r.json()).then(j => {
+  paint(j.members || []);
+}).catch(() => { S('#pick').innerHTML = '<span class="sub">không gọi được server</span>'; });
+
+async function login(){
+  if(!chosen){ say('#msg', 'chọn tên của bạn trước', 'err'); return; }
+  S('#go').disabled = true;
+  try{
+    const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name: chosen, password: S('#pw').value})});
+    const j = await r.json();
+    if(!j.ok){ say('#msg', j.error || 'đăng nhập thất bại', 'err'); S('#go').disabled = false; return; }
+    localStorage.setItem('kis-token', j.token);
+    localStorage.setItem('kis-user', j.name);
+    location.href = next && next !== '/login.html' ? next : 'hub.html';
+  }catch(e){ say('#msg', 'không gọi được server', 'err'); S('#go').disabled = false; }
+}
+S('#go').onclick = login;
+S('#pw').onkeydown = e => { if(e.key === 'Enter') login(); };
+</script></body></html>

@@ -364,7 +364,8 @@ const $ = s => document.querySelector(s);
 
 async function api(path, opts){
   opts = opts || {};
-  opts.headers = Object.assign({}, opts.headers, authToken ? {'X-KIS-Auth': authToken} : {});
+  opts.headers = Object.assign({}, opts.headers,
+    authToken ? {'X-KIS-Auth': authToken, 'X-KIS-User': localStorage.getItem('kis-user') || ''} : {});
   const r = await fetch(path, opts);
   if(r.status === 401){ document.body.classList.add('locked'); throw new Error('cần mật khẩu'); }
   return r;
@@ -1002,13 +1003,16 @@ setInterval(() => { if(teamOn && teamSub) loadProgress(); }, 10000);
 
 /* ---------- khoi dong ---------- */
 function boot(){
-fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken}} : {}).then(r => r.json()).then(j => {
-  if(j.auth_required && !j.authed){ document.body.classList.add('locked'); return; }
+fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken,
+      'X-KIS-User': localStorage.getItem('kis-user') || ''}} : {}).then(r => r.json()).then(j => {
+  if(j.auth_required && !j.authed){ location.href = 'login.html?next=/index.html'; return; }
   document.body.classList.remove('locked');
   teamOn = !!j.team;
   if(teamOn){
     document.body.classList.add('team');
+    teamWho = localStorage.getItem('kis-user') || teamWho;
     $('#whoami').value = teamWho;
+    $('#whoami').readOnly = !!localStorage.getItem('kis-user');
     $('#onlymine').checked = onlyMine;
     loadSubs().then(() => {
       const last = localStorage.getItem('kis-sub');

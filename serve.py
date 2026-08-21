@@ -33,6 +33,10 @@ PASSWORD = os.environ.get("KIS_PASSWORD", "")
 BUCKET   = os.environ.get("KIS_BUCKET", "")
 MAX_UPLOAD = 8 * 1024 * 1024      # CSV submission khong bao gio lon the nay
 
+def current_round_of():
+    return team.current_round(store())
+
+
 _store = None
 def store():
     global _store
@@ -41,11 +45,13 @@ def store():
     return _store
 
 
-def token_for(pw):
-    """Token gui kem moi request. Khong phai session that -- du cho team noi bo."""
-    return hashlib.sha256(("kis:" + pw).encode()).hexdigest()
+def token_for(pw, name=""):
+    """Token gan voi TEN nguoi dung, de server biet ai dang goi.
 
-EXPECTED = token_for(PASSWORD) if PASSWORD else ""
+    Khong phai session that (khong han han, khong thu hoi duoc) -- du cho mot
+    nhom noi bo dung chung mot mat khau.
+    """
+    return hashlib.sha256(("kis:" + pw + ":" + team.norm_name(name)).encode()).hexdigest()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -76,11 +82,25 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
-    def _authed(self):
+    def _user(self):
+        """Tra ve ten nguoi dung neu token hop le, nguoc lai None."""
+        name = team.norm_name(self.headers.get("X-KIS-User", ""))
         if not PASSWORD:
-            return True
+            return name or "khach"
+        if not name or name not in team.load_users(store()):
+            return None
         got = self.headers.get("X-KIS-Auth", "")
-        return bool(got) and hmac.compare_digest(got, EXPECTED)
+        return name if got and hmac.compare_digest(got, token_for(PASSWORD, name)) else None
+
+    def _authed(self):
+        return self._user() is not None
+
+    def _admin(self):
+        u = self._user()
+        return bool(u) and (not PASSWORD or team.is_admin(store(), u))
+
+    def _need_admin(self):
+        self._json(403, {"ok": False, "error": "chi admin moi lam duoc viec nay"})
 
     def _need_auth(self):
         self._json(401, {"ok": False, "error": "can mat khau", "auth": True})
@@ -99,6 +119,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path, q = self._q()
 
+        if path == "/api/members":
+            # Cong khai: trang dang nhap can danh sach ten de hien nut chon.
+            return self._json(200, {"ok": True,
+                                    "members": sorted(team.load_users(store()).keys())})
+
         if path == "/api/status":
             # Cong khai, nhung chi noi du de UI biet co phai hoi mat khau khong.
             vids = sorted(f[:-4] for f in os.listdir(VIDEODIR)
@@ -113,11 +138,47 @@ class Handler(SimpleHTTPRequestHandler):
                 "api": api_ok, "api_model": os.environ.get("KIS_API_MODEL", ""),
                 "backends": [b for b in BACKENDS if b == "siglip" or api_ok],
                 "fetch": FETCH, "max_frames": MAXFRAMES,
-                "translate": api_ok, "team": True})
+                "translate": api_ok, "team": True,
+                "me": self._user(), "is_admin": self._admin() if self._authed() else False,
+                "round": current_round_of()})
 
         if path.startswith("/api/"):
             if not self._authed():
                 return self._need_auth()
+
+            if path == "/api/me":
+                u = self._user()
+                users = team.load_users(store())
+                return self._json(200, {"ok": True, "name": u,
+                                        "role": users.get(u, {}).get("role", "member")})
+
+            if path == "/api/users":
+                return self._json(200, {"ok": True, "users": team.load_users(store())})
+
+            if path == "/api/round":
+                return self._json(200, {"ok": True, "round": current_round_of(),
+                                        "rounds": team.ROUNDS,
+                                        "status": team.round_status(store()),
+                                        "can_switch": self._admin()})
+
+            if path == "/api/queries":
+                rnd = q.get("round") or current_round_of()
+                qs = team.load_queries(store(), rnd)
+                return self._json(200, {"ok": True, "round": rnd, "queries": qs,
+                                        "rounds": team.list_rounds(store()),
+                                        "assign": team.load_query_assignment(store(), rnd),
+                                        "subs": team.submissions_by_query(store())})
+
+            if path == "/api/mytasks":
+                rnd = q.get("round") or current_round_of()
+                me  = self._user()
+                plan = team.load_query_assignment(store(), rnd)
+                mine = plan.get(me, [])
+                qs = {x["id"]: x for x in team.load_queries(store(), rnd)}
+                subs = team.submissions_by_query(store())
+                return self._json(200, {"ok": True, "name": me, "round": rnd,
+                                        "tasks": [{"query": qs.get(i, {"id": i}),
+                                                   "subs": subs.get(i, [])} for i in mine]})
 
             if path == "/api/submissions":
                 return self._json(200, {"ok": True, "items": team.list_submissions(store())})
@@ -161,14 +222,21 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/login":
             body = self._body(4096) or b"{}"
             try:
-                pw = (json.loads(body).get("password") or "")
+                j = json.loads(body)
+                pw, name = (j.get("password") or ""), team.norm_name(j.get("name") or "")
             except Exception:
-                pw = ""
-            if not PASSWORD:
-                return self._json(200, {"ok": True, "token": "", "auth_required": False})
-            if hmac.compare_digest(token_for(pw), EXPECTED):
-                return self._json(200, {"ok": True, "token": EXPECTED})
-            return self._json(401, {"ok": False, "error": "mat khau khong dung"})
+                pw, name = "", ""
+            users = team.load_users(store())
+            if not name:
+                return self._json(400, {"ok": False, "error": "chua chon ten"})
+            if name not in users:
+                return self._json(403, {"ok": False,
+                                        "error": f"'{name}' khong co trong danh sach thanh vien"})
+            if PASSWORD and not hmac.compare_digest(token_for(pw, name), token_for(PASSWORD, name)):
+                return self._json(401, {"ok": False, "error": "mat khau khong dung"})
+            return self._json(200, {"ok": True, "token": token_for(PASSWORD, name),
+                                    "name": name, "role": users[name].get("role", "member")})
+
 
         if not self._authed():
             return self._need_auth()
@@ -182,6 +250,32 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._assign()
             if path == "/api/score":
                 return self._score()
+            if path == "/api/users":
+                if not self._admin():
+                    return self._need_admin()
+                return self._users_post()
+            if path == "/api/queries":
+                if not self._admin():
+                    return self._need_admin()
+                return self._queries_post()
+            if path == "/api/qassign":
+                if not self._admin():
+                    return self._need_admin()
+                return self._qassign_post()
+            if path == "/api/link":
+                if not self._admin():
+                    return self._need_admin()
+                return self._link_post()
+            if path == "/api/round":
+                if not self._admin():
+                    return self._need_admin()
+                req = json.loads(self._body(4096) or b"{}")
+                try:
+                    r = team.set_round(store(), req.get("round", ""))
+                except ValueError as e:
+                    return self._json(400, {"ok": False, "error": str(e)})
+                sys.stderr.write(f"\n[round] chuyen toan cuc sang: {r}\n")
+                return self._json(200, {"ok": True, "round": r})
             return self._json(404, {"ok": False, "error": "khong co endpoint nay"})
         except Exception as e:
             traceback.print_exc()
@@ -196,6 +290,9 @@ class Handler(SimpleHTTPRequestHandler):
         people = [p for p in (q.get("people") or "").split(",") if p.strip()]
         try:
             meta = team.save_submission(store(), name, data, people or None)
+            if q.get("query_id"):
+                meta = team.link_submission(store(), q["query_id"], meta["name"],
+                                            q.get("round") or current_round_of())
         except ValueError as e:
             return self._json(400, {"ok": False, "error": str(e)})
         sys.stderr.write(f"\n[upload] {meta['name']}: {meta['rows']} dong · "
@@ -204,6 +301,59 @@ class Handler(SimpleHTTPRequestHandler):
         plan = team.load_assignment(store(), meta["name"])
         return self._json(200, {"ok": True, "meta": meta, "assign": plan,
                                 "stats": team.assignment_stats(rows, plan) if plan else {}})
+
+    def _users_post(self):
+        req = json.loads(self._body(65536) or b"{}")
+        act = req.get("action")
+        try:
+            if act == "add":
+                users = team.add_user(store(), req.get("name", ""), req.get("role", "member"))
+            elif act == "role":
+                users = team.set_role(store(), req.get("name", ""), req.get("role", "member"))
+            elif act == "remove":
+                users = team.remove_user(store(), req.get("name", ""))
+            else:
+                return self._json(400, {"ok": False, "error": "action phai la add/role/remove"})
+        except ValueError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        return self._json(200, {"ok": True, "users": users})
+
+    def _queries_post(self):
+        import queries as qparse
+        req = json.loads(self._body() or b"{}")
+        rnd = req.get("round") or current_round_of()
+        qs = qparse.parse(req.get("text") or "")
+        if not qs:
+            return self._json(400, {"ok": False,
+                                    "error": "khong tach duoc cau hoi nao -- kiem tra lai van ban dan vao"})
+        team.save_queries(store(), qs, rnd)
+        sys.stderr.write(f"\n[queries] {rnd}: {len(qs)} cau · {qparse.summary(qs)}\n")
+        return self._json(200, {"ok": True, "round": rnd,
+                                "summary": qparse.summary(qs), "queries": qs})
+
+    def _qassign_post(self):
+        req = json.loads(self._body(262144) or b"{}")
+        rnd = req.get("round") or current_round_of()
+        qs = team.load_queries(store(), rnd)
+        if not qs:
+            return self._json(400, {"ok": False, "error": "chua co bo cau hoi cho vong nay"})
+        people = req.get("people")
+        if not people:
+            people = [n for n, u in team.load_users(store()).items()]
+        plan = req.get("plan")
+        if not plan:
+            plan = team.assign_queries([x["id"] for x in qs], people)
+        team.save_query_assignment(store(), plan, rnd)
+        return self._json(200, {"ok": True, "round": rnd, "assign": plan})
+
+    def _link_post(self):
+        req = json.loads(self._body(65536) or b"{}")
+        try:
+            m = team.link_submission(store(), req.get("query_id", ""),
+                                     req.get("sub", ""), req.get("round") or current_round_of())
+        except ValueError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        return self._json(200, {"ok": True, "meta": m})
 
     def _assign(self):
         req = json.loads(self._body(65536) or b"{}")

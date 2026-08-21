@@ -1,0 +1,112 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nạp bộ câu hỏi — KIS Checker</title><link rel="stylesheet" href="app.css"></head><body>
+<div class="wrap">
+  <div class="nav" id="nav"></div>
+  <h1 style="margin-top:18px">Nạp bộ câu hỏi</h1>
+  <div class="sub">Dán nguyên đề thi vào — hệ thống tự tách thành từng query</div>
+
+  <div class="card">
+    <div class="row"><b style="font-size:13px">Nạp vào vòng:</b><span id="rsw" class="pick"></span></div>
+    <label class="fld"><span>Dán toàn bộ nội dung đề (giữ nguyên, không cần cắt gọt)</span>
+      <textarea id="raw" placeholder="Câu `query-p1-1-kis`&#10;Đây là phần giới thiệu…"></textarea></label>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="parse">Tách câu hỏi</button>
+      <span class="sub">Nạp lại sẽ thay thế toàn bộ bộ câu hỏi của vòng này</span>
+    </div>
+    <div class="msg" id="pmsg"></div>
+  </div>
+
+  <h2>Câu hỏi trong vòng <span id="rname" class="tag"></span></h2>
+  <div class="card">
+    <table><thead><tr><th class="mono">query</th><th>loại</th><th>mô tả</th>
+      <th>CSV submission</th></tr></thead><tbody id="qtb"></tbody></table>
+    <div id="empty" class="sub">chưa có câu hỏi nào</div>
+  </div>
+</div>
+<input type="file" id="csvfile" accept=".csv,text/csv" hidden>
+<script src="app.js"></script>
+<script>
+let ROUND = '', ROUNDS = [], QS = [], SUBS = {}, pendingQid = '';
+
+function paintRounds(){
+  const box = S('#rsw'); box.innerHTML = '';
+  ROUNDS.forEach(r => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = r.label;
+    b.setAttribute('aria-pressed', r.id === ROUND);
+    b.onclick = () => { ROUND = r.id; paintRounds(); loadQs(); };
+    box.appendChild(b);
+  });
+  S('#rname').textContent = (ROUNDS.find(r => r.id === ROUND) || {}).label || ROUND;
+}
+
+function paintQs(){
+  S('#empty').style.display = QS.length ? 'none' : '';
+  const tb = S('#qtb'); tb.innerHTML = '';
+  QS.forEach(q => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td></td>';
+    const td = tr.children;
+    td[0].textContent = q.id;
+    td[1].innerHTML = '<span class="tag ' + q.kind + '">' + q.kind + '</span>'
+      + (q.events && q.events.length ? '<br><span class="sub">' + q.events.length + ' mốc</span>' : '');
+    td[2].textContent = (q.text || '').slice(0, 180);
+    const has = (SUBS[q.id] || []);
+    const wrap = document.createElement('div');
+    wrap.className = 'row';
+    const lbl = document.createElement('span');
+    lbl.className = 'sub'; lbl.textContent = has.length ? has.join(', ') : 'chưa có';
+    const up = document.createElement('button');
+    up.className = 'btn'; up.textContent = '⬆ CSV';
+    up.onclick = () => { pendingQid = q.id; S('#csvfile').click(); };
+    wrap.appendChild(lbl); wrap.appendChild(up);
+    td[3].appendChild(wrap);
+    tb.appendChild(tr);
+  });
+}
+
+async function loadQs(){
+  const j = await jget('/api/queries?round=' + encodeURIComponent(ROUND));
+  QS = j.queries || []; SUBS = j.subs || {};
+  paintRounds(); paintQs();
+}
+
+S('#parse').onclick = async () => {
+  const text = S('#raw').value.trim();
+  if(!text){ say('#pmsg', 'chưa dán gì cả', 'err'); return; }
+  S('#parse').disabled = true;
+  try{
+    const j = await jpost('/api/queries', {round: ROUND, text});
+    const s = j.summary;
+    say('#pmsg', 'tách được ' + s.total + ' câu — '
+      + Object.entries(s.by_kind).map(([k,v]) => v + ' ' + k).join(', '), 'ok');
+    await loadQs();
+  }catch(e){ say('#pmsg', e.message, 'err'); }
+  S('#parse').disabled = false;
+};
+
+S('#csvfile').onchange = async ev => {
+  const f = ev.target.files[0]; ev.target.value = '';
+  if(!f || !pendingQid) return;
+  const name = prompt('Tên cho submission này:', pendingQid + '-' + f.name.replace(/\.csv$/i,''));
+  if(name === null) return;
+  try{
+    const r = await api('/api/upload?name=' + encodeURIComponent(name)
+      + '&query_id=' + encodeURIComponent(pendingQid)
+      + '&round=' + encodeURIComponent(ROUND),
+      {method:'POST', headers:{'Content-Type':'text/csv'}, body: f});
+    const j = await r.json();
+    if(!j.ok){ say('#pmsg', j.error, 'err'); return; }
+    say('#pmsg', 'đã gắn ' + j.meta.rows + ' dòng vào ' + pendingQid, 'ok');
+    await loadQs();
+  }catch(e){ say('#pmsg', e.message, 'err'); }
+};
+
+(async () => {
+  if(!await guard(true)) return;
+  const j = await jget('/api/round');
+  ROUND = j.round; ROUNDS = j.rounds;
+  await loadQs();
+})();
+</script></body></html>

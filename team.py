@@ -241,3 +241,181 @@ def export_csv(store, name):
         who, v = merged.get(key_of(r["video"], r["frame"]), (None, None))
         w.writerow([i, r["video"], r["frame"], label.get(v, ""), who or "", owner.get(r["video"], "")])
     return buf.getvalue()
+
+
+# ---------- thanh vien va vai tro ----------
+import unicodedata
+
+DEFAULT_USERS = {
+    "nhat":     {"role": "admin"},
+    "thanh":    {"role": "member"},
+    "nhan":     {"role": "member"},
+    "quynhanh": {"role": "member"},
+    "tung":     {"role": "member"},
+}
+
+
+def norm_name(s):
+    """Ten chuan: chu thuong, khong dau, khong khoang trang.
+
+    'Quỳnh Anh' -> 'quynhanh'. Dung de so khop luc dang nhap.
+    """
+    s = unicodedata.normalize("NFD", (s or "").strip())
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = s.replace("đ", "d").replace("Đ", "d")
+    return re.sub(r"[^a-z0-9]+", "", s.lower())
+
+
+def load_users(store):
+    d = store.read("users.json")
+    if d:
+        return json.loads(d)
+    store.write("users.json", json.dumps(DEFAULT_USERS, ensure_ascii=False))
+    return dict(DEFAULT_USERS)
+
+
+def save_users(store, users):
+    store.write("users.json", json.dumps(users, ensure_ascii=False))
+
+
+def set_role(store, name, role):
+    users = load_users(store)
+    n = norm_name(name)
+    if n not in users:
+        raise ValueError(f"khong co thanh vien '{n}'")
+    if role not in ("admin", "member"):
+        raise ValueError("role phai la admin hoac member")
+    users[n]["role"] = role
+    save_users(store, users)
+    return users
+
+
+def add_user(store, name, role="member"):
+    users = load_users(store)
+    n = norm_name(name)
+    if not n:
+        raise ValueError("ten khong hop le")
+    users.setdefault(n, {})["role"] = role if role in ("admin", "member") else "member"
+    save_users(store, users)
+    return users
+
+
+def remove_user(store, name):
+    users = load_users(store)
+    n = norm_name(name)
+    if n in users:
+        if users[n].get("role") == "admin" and \
+           sum(1 for u in users.values() if u.get("role") == "admin") <= 1:
+            raise ValueError("khong the xoa admin cuoi cung")
+        del users[n]
+        save_users(store, users)
+    return users
+
+
+def is_admin(store, name):
+    return load_users(store).get(norm_name(name), {}).get("role") == "admin"
+
+
+# ---------- bo cau hoi ----------
+def save_queries(store, qs, round_name="p1"):
+    store.write(f"queries/{slug(round_name)}.json", json.dumps(qs, ensure_ascii=False))
+    return qs
+
+
+def load_queries(store, round_name="p1"):
+    d = store.read(f"queries/{slug(round_name)}.json")
+    return json.loads(d) if d else []
+
+
+def list_rounds(store):
+    return sorted(f[:-5] for f in store.list("queries") if f.endswith(".json"))
+
+
+def assign_queries(qids, people):
+    """Chia deu cau hoi cho thanh vien, vong tron theo thu tu."""
+    people = [p for p in dict.fromkeys(norm_name(p) for p in people if norm_name(p))]
+    if not people:
+        return {}
+    out = {p: [] for p in people}
+    for i, q in enumerate(qids):
+        out[people[i % len(people)]].append(q)
+    return out
+
+
+def save_query_assignment(store, plan, round_name="p1"):
+    store.write(f"qassign/{slug(round_name)}.json", json.dumps(plan, ensure_ascii=False))
+    return plan
+
+
+def load_query_assignment(store, round_name="p1"):
+    d = store.read(f"qassign/{slug(round_name)}.json")
+    return json.loads(d) if d else {}
+
+
+def link_submission(store, query_id, sub_name, round_name="p1"):
+    """Gan mot CSV submission vao mot cau hoi."""
+    m = load_meta(store, sub_name)
+    if not m:
+        raise ValueError(f"khong co submission '{sub_name}'")
+    m["query_id"] = query_id
+    m["round"] = round_name
+    store.write(f"meta/{slug(sub_name)}.json", json.dumps(m, ensure_ascii=False))
+    return m
+
+
+def submissions_by_query(store):
+    out = {}
+    for m in list_submissions(store):
+        if m.get("query_id"):
+            out.setdefault(m["query_id"], []).append(m["name"])
+    return out
+
+
+# ---------- vong thi ----------
+# Vong hien tai la mot gia tri TOAN CUC: admin doi thi moi nguoi doi theo.
+ROUNDS = [
+    {"id": "thu-nghiem", "label": "Vòng thử nghiệm"},
+    {"id": "vong-1",     "label": "Vòng 1"},
+    {"id": "vong-2",     "label": "Vòng 2"},
+    {"id": "vong-3",     "label": "Vòng 3"},
+]
+ROUND_IDS = [r["id"] for r in ROUNDS]
+
+
+def load_settings(store):
+    d = store.read("settings.json")
+    return json.loads(d) if d else {"round": ROUND_IDS[0]}
+
+
+def save_settings(store, st):
+    store.write("settings.json", json.dumps(st, ensure_ascii=False))
+    return st
+
+
+def current_round(store):
+    r = load_settings(store).get("round")
+    return r if r in ROUND_IDS else ROUND_IDS[0]
+
+
+def set_round(store, r):
+    if r not in ROUND_IDS:
+        raise ValueError(f"vong '{r}' khong hop le")
+    st = load_settings(store)
+    st["round"] = r
+    save_settings(store, st)
+    return r
+
+
+def round_status(store):
+    """Tinh trang tung vong: da nap bao nhieu cau, da chia chua, co bao nhieu CSV."""
+    subs = {}
+    for m in list_submissions(store):
+        subs.setdefault(m.get("round") or ROUND_IDS[0], []).append(m["name"])
+    out = []
+    for r in ROUNDS:
+        qs = load_queries(store, r["id"])
+        plan = load_query_assignment(store, r["id"])
+        out.append({**r, "queries": len(qs),
+                    "assigned": sum(len(v) for v in plan.values()),
+                    "subs": len(subs.get(r["id"], []))})
+    return out

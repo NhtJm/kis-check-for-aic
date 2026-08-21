@@ -1,0 +1,188 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thành viên & phân việc — KIS Checker</title><link rel="stylesheet" href="app.css"></head><body>
+<div class="wrap">
+  <div class="nav" id="nav"></div>
+  <h1 style="margin-top:18px">Thành viên &amp; phân việc</h1>
+  <div class="sub">Thêm người, đổi vai trò, và chia query cho từng người</div>
+
+  <h2>Vòng thi hiện tại</h2>
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">Đổi ở đây là đổi <b>toàn cục</b> —
+      mọi thành viên lập tức chỉ thấy vòng này.</div>
+    <div class="pick" id="rsw"></div>
+    <div class="msg" id="rmsg"></div>
+    <table style="margin-top:12px"><thead><tr><th>vòng</th><th>câu hỏi</th>
+      <th>đã chia</th><th>CSV</th></tr></thead><tbody id="rtb"></tbody></table>
+  </div>
+
+  <h2>Thành viên</h2>
+  <div class="card">
+    <table><thead><tr><th class="mono">tên</th><th>vai trò</th><th>số query được giao</th><th></th></tr></thead>
+      <tbody id="utb"></tbody></table>
+    <div class="row" style="margin-top:14px">
+      <input type="text" id="newname" placeholder="tên mới (sẽ tự chuyển thành chữ thường, bỏ dấu)" style="max-width:340px">
+      <select id="newrole" style="width:auto"><option value="member">member</option><option value="admin">admin</option></select>
+      <button class="btn" id="add">Thêm</button>
+    </div>
+    <div class="msg" id="umsg"></div>
+  </div>
+
+  <h2>Chia query cho thành viên</h2>
+  <div class="card">
+    <div class="row">
+      <select id="round" style="width:auto"></select>
+      <button class="btn primary" id="auto">Chia đều tự động</button>
+      <span class="sub" id="qinfo"></span>
+    </div>
+    <div class="msg" id="amsg"></div>
+    <table style="margin-top:12px"><thead><tr><th class="mono">query</th><th>loại</th>
+      <th>giao cho</th><th>CSV đã gắn</th></tr></thead><tbody id="atb"></tbody></table>
+  </div>
+</div>
+<script src="app.js"></script>
+<script>
+let ME = null, USERS = {}, QS = [], PLAN = {}, SUBS = {};
+let ROUND = '', ROUNDS = [], RSTATUS = [];
+
+function paintRounds(){
+  const box = S('#rsw'); box.innerHTML = '';
+  ROUNDS.forEach(r => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = r.label;
+    b.setAttribute('aria-pressed', r.id === ROUND);
+    b.onclick = async () => {
+      if(r.id === ROUND) return;
+      try{
+        await jpost('/api/round', {round: r.id});
+        ROUND = r.id;
+        say('#rmsg', 'đã chuyển toàn cục sang ' + r.label
+            + ' — mọi thành viên giờ chỉ thấy vòng này', 'ok');
+        await refreshRounds(); await loadRound(ROUND);
+      }catch(e){ say('#rmsg', e.message, 'err'); }
+    };
+    box.appendChild(b);
+  });
+  const tb = S('#rtb'); tb.innerHTML = '';
+  RSTATUS.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td></td><td></td><td></td><td></td>';
+    tr.children[0].innerHTML = r.label + (r.id === ROUND
+      ? ' <span class="tag me">đang mở</span>' : '');
+    tr.children[1].textContent = r.queries;
+    tr.children[2].textContent = r.assigned;
+    tr.children[3].textContent = r.subs;
+    tb.appendChild(tr);
+  });
+}
+
+async function refreshRounds(){
+  const j = await jget('/api/round');
+  ROUND = j.round; ROUNDS = j.rounds; RSTATUS = j.status;
+  const sel = S('#round');
+  sel.innerHTML = '';
+  ROUNDS.forEach(r => {
+    const o = document.createElement('option');
+    o.value = r.id; o.textContent = r.label;
+    o.selected = (r.id === ROUND); sel.appendChild(o);
+  });
+  paintRounds();
+}
+
+function renderUsers(){
+  const tb = S('#utb'); tb.innerHTML = '';
+  const load = {};
+  Object.entries(PLAN).forEach(([p, ids]) => load[p] = ids.length);
+  Object.entries(USERS).sort().forEach(([n, u]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="mono"></td><td></td><td class="mono"></td><td></td>';
+    const td = tr.children;
+    td[0].textContent = n;
+    const sel = document.createElement('select');
+    sel.style.width = 'auto';
+    ['member','admin'].forEach(r => {
+      const o = document.createElement('option'); o.value = o.textContent = r;
+      o.selected = (u.role === r); sel.appendChild(o);
+    });
+    sel.onchange = async () => {
+      try{ const j = await jpost('/api/users', {action:'role', name:n, role:sel.value});
+           USERS = j.users; say('#umsg', 'đã đổi vai trò của ' + n, 'ok'); renderUsers(); }
+      catch(e){ say('#umsg', e.message, 'err'); }
+    };
+    td[1].appendChild(sel);
+    td[2].textContent = load[n] != null ? load[n] : 0;
+    const del = document.createElement('button');
+    del.className = 'btn danger'; del.textContent = 'Xoá';
+    del.onclick = async () => {
+      if(!confirm('Xoá ' + n + '?')) return;
+      try{ const j = await jpost('/api/users', {action:'remove', name:n});
+           USERS = j.users; say('#umsg', 'đã xoá ' + n, 'ok'); renderUsers(); }
+      catch(e){ say('#umsg', e.message, 'err'); }
+    };
+    td[3].appendChild(del);
+    tb.appendChild(tr);
+  });
+}
+
+function renderQueries(){
+  S('#qinfo').textContent = QS.length ? QS.length + ' câu hỏi' : 'chưa nạp bộ câu hỏi nào';
+  const owner = {};
+  Object.entries(PLAN).forEach(([p, ids]) => ids.forEach(i => owner[i] = p));
+  const tb = S('#atb'); tb.innerHTML = '';
+  QS.forEach(q => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td class="mono"></td>';
+    const td = tr.children;
+    td[0].textContent = q.id;
+    td[1].innerHTML = '<span class="tag ' + q.kind + '">' + q.kind + '</span>';
+    const sel = document.createElement('select'); sel.style.width = 'auto';
+    const none = document.createElement('option'); none.value = ''; none.textContent = '— chưa giao —';
+    sel.appendChild(none);
+    Object.keys(USERS).sort().forEach(n => {
+      const o = document.createElement('option'); o.value = o.textContent = n;
+      o.selected = (owner[q.id] === n); sel.appendChild(o);
+    });
+    sel.onchange = async () => {
+      Object.keys(PLAN).forEach(p => PLAN[p] = PLAN[p].filter(i => i !== q.id));
+      if(sel.value){ (PLAN[sel.value] = PLAN[sel.value] || []).push(q.id); }
+      try{ await jpost('/api/qassign', {round: S('#round').value, plan: PLAN});
+           say('#amsg', 'đã lưu phân công', 'ok'); renderUsers(); }
+      catch(e){ say('#amsg', e.message, 'err'); }
+    };
+    td[2].appendChild(sel);
+    td[3].textContent = (SUBS[q.id] || []).join(', ') || '—';
+    tb.appendChild(tr);
+  });
+}
+
+async function loadRound(rnd){
+  const j = await jget('/api/queries?round=' + encodeURIComponent(rnd || ROUND));
+  QS = j.queries || []; PLAN = j.assign || {}; SUBS = j.subs || {};
+  renderQueries(); renderUsers();
+}
+
+S('#add').onclick = async () => {
+  const n = S('#newname').value.trim();
+  if(!n){ say('#umsg', 'nhập tên đã', 'err'); return; }
+  try{ const j = await jpost('/api/users', {action:'add', name:n, role:S('#newrole').value});
+       USERS = j.users; S('#newname').value = '';
+       say('#umsg', 'đã thêm', 'ok'); renderUsers(); renderQueries(); }
+  catch(e){ say('#umsg', e.message, 'err'); }
+};
+S('#auto').onclick = async () => {
+  if(!QS.length){ say('#amsg', 'chưa có câu hỏi để chia', 'err'); return; }
+  try{ const j = await jpost('/api/qassign', {round: S('#round').value});
+       PLAN = j.assign; say('#amsg', 'đã chia đều ' + QS.length + ' câu cho '
+         + Object.keys(PLAN).length + ' người', 'ok');
+       renderQueries(); renderUsers(); }
+  catch(e){ say('#amsg', e.message, 'err'); }
+};
+S('#round').onchange = () => loadRound(S('#round').value);
+
+(async () => {
+  ME = await guard(true); if(!ME) return;
+  USERS = (await jget('/api/users')).users;
+  await refreshRounds();
+  await loadRound(ROUND);
+})();
+</script></body></html>

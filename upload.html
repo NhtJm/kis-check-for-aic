@@ -1,0 +1,83 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nộp CSV — KIS Checker</title><link rel="stylesheet" href="app.css"></head><body>
+<div class="wrap">
+  <div class="nav" id="nav"></div>
+  <h1 style="margin-top:18px">Nộp CSV submission</h1>
+  <div class="sub">Đưa file lên đây thay cho gửi qua chat — cả nhóm mở được ngay</div>
+
+  <div class="card">
+    <div class="row"><b style="font-size:13px">Vòng:</b><span class="tag" id="rtag"></span></div>
+    <label class="fld"><span>Gắn vào câu hỏi (tuỳ chọn)</span>
+      <select id="qid"><option value="">— không gắn —</option></select></label>
+    <label class="fld"><span>Tên submission</span>
+      <input type="text" id="name" placeholder="vd: kis-1"></label>
+    <label class="fld"><span>Chia cho ai (cách nhau bằng dấu phẩy, để trống thì chưa chia)</span>
+      <input type="text" id="people" placeholder="thanh, nhan, tung"></label>
+    <label class="fld"><span>File CSV</span>
+      <input type="file" id="file" accept=".csv,text/csv"></label>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary" id="go">Nộp</button>
+      <a class="btn" href="index.html">Sang trang kiểm tra →</a>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <h2>Đã nộp</h2>
+  <div class="card"><table><thead><tr><th class="mono">tên</th><th>dòng</th><th>video</th>
+    <th class="mono">query</th></tr></thead><tbody id="tb"></tbody></table>
+    <div id="none" class="sub">chưa có submission nào</div></div>
+</div>
+<script src="app.js"></script>
+<script>
+let ROUND = '';
+async function refresh(){
+  const j = await jget('/api/submissions');
+  const items = j.items || [];
+  S('#none').style.display = items.length ? 'none' : '';
+  const tb = S('#tb'); tb.innerHTML = '';
+  items.forEach(m => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td class="mono"></td>';
+    tr.children[0].textContent = m.name;
+    tr.children[1].textContent = m.rows;
+    tr.children[2].textContent = (m.videos || []).length;
+    tr.children[3].textContent = m.query_id || '—';
+    tb.appendChild(tr);
+  });
+}
+S('#go').onclick = async () => {
+  const f = S('#file').files[0];
+  if(!f){ say('#msg', 'chọn file CSV đã', 'err'); return; }
+  const name = S('#name').value.trim() || f.name.replace(/\.csv$/i,'');
+  S('#go').disabled = true;
+  try{
+    let u = '/api/upload?name=' + encodeURIComponent(name)
+          + '&people=' + encodeURIComponent(S('#people').value)
+          + '&round=' + encodeURIComponent(ROUND);
+    if(S('#qid').value) u += '&query_id=' + encodeURIComponent(S('#qid').value);
+    const j = await (await api(u, {method:'POST', headers:{'Content-Type':'text/csv'}, body:f})).json();
+    if(!j.ok){ say('#msg', j.error, 'err'); }
+    else{
+      const st = Object.entries(j.stats || {}).map(([p,s]) => p + ' ' + s.rows + ' dòng').join(' · ');
+      say('#msg', 'đã nộp ' + j.meta.rows + ' dòng / ' + j.meta.videos.length + ' video'
+        + (st ? ' — ' + st : ''), 'ok');
+      await refresh();
+    }
+  }catch(e){ say('#msg', e.message, 'err'); }
+  S('#go').disabled = false;
+};
+(async () => {
+  if(!await guard(false)) return;
+  const r = await jget('/api/round');
+  ROUND = r.round;
+  S('#rtag').textContent = (r.rounds.find(x => x.id === ROUND) || {}).label || ROUND;
+  const q = await jget('/api/queries?round=' + encodeURIComponent(ROUND));
+  (q.queries || []).forEach(x => {
+    const o = document.createElement('option');
+    o.value = x.id; o.textContent = x.id + ' — ' + (x.text || '').slice(0, 60);
+    S('#qid').appendChild(o);
+  });
+  await refresh();
+})();
+</script></body></html>
