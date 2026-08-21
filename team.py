@@ -495,3 +495,45 @@ def ingest_zip(store, data, round_name=None, people=None, log=lambda m: None):
     return {"matched": matched, "unmatched": unmatched, "failed": failed,
             "missing_queries": missing, "round": round_name,
             "queries_loaded": len(known)}
+
+
+def delete_queries(store, round_name=None, unlink_subs=False):
+    """Xoa bo cau hoi cua mot vong.
+
+    Xoa ca phan cong, neu khong se con phan cong tro vao cau khong ton tai.
+    Mac dinh KHONG go query_id khoi cac CSV da nop: nap lai dung bo do thi chung
+    tu noi lai (cung co che lam cho thu tu nop khong quan trong). Dat
+    unlink_subs=True neu muon cat han lien ket.
+    """
+    round_name = round_name or current_round(store)
+    qs = load_queries(store, round_name)
+    plan = load_query_assignment(store, round_name)
+
+    store.delete(f"queries/{slug(round_name)}.json")
+    store.delete(f"qassign/{slug(round_name)}.json")
+
+    unlinked = 0
+    if unlink_subs:
+        ids = {q["id"] for q in qs}
+        for m in list_submissions(store):
+            if m.get("query_id") in ids:
+                m.pop("query_id", None)
+                store.write(f"meta/{slug(m['name'])}.json", json.dumps(m, ensure_ascii=False))
+                unlinked += 1
+
+    return {"round": round_name, "deleted_queries": len(qs),
+            "deleted_assignments": sum(len(v) for v in plan.values()),
+            "unlinked_subs": unlinked}
+
+
+def queries_impact(store, round_name=None):
+    """Bao truoc xoa se anh huong gi -- de hoi cho ro truoc khi lam."""
+    round_name = round_name or current_round(store)
+    qs = load_queries(store, round_name)
+    plan = load_query_assignment(store, round_name)
+    ids = {q["id"] for q in qs}
+    linked = [m["name"] for m in list_submissions(store) if m.get("query_id") in ids]
+    return {"round": round_name, "queries": len(qs),
+            "assignments": sum(len(v) for v in plan.values()),
+            "people": sorted(p for p, v in plan.items() if v),
+            "linked_subs": linked}

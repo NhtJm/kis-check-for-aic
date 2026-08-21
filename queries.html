@@ -12,6 +12,7 @@
       <textarea id="raw" placeholder="Câu `query-p1-1-kis`&#10;Đây là phần giới thiệu…"></textarea></label>
     <div class="row" style="margin-top:12px">
       <button class="btn primary" id="parse">Tách câu hỏi</button>
+      <button class="btn danger" id="wipe">🗑 Xoá bộ câu hỏi của vòng này</button>
       <span class="sub">Nạp lại sẽ thay thế toàn bộ bộ câu hỏi của vòng này</span>
     </div>
     <div class="msg" id="pmsg"></div>
@@ -84,6 +85,33 @@ S('#parse').onclick = async () => {
     await loadQs();
   }catch(e){ say('#pmsg', e.message, 'err'); }
   S('#parse').disabled = false;
+};
+
+S('#wipe').onclick = async () => {
+  let im;
+  try{ im = await jget('/api/queries/impact?round=' + encodeURIComponent(ROUND)); }
+  catch(e){ say('#pmsg', e.message, 'err'); return; }
+  if(!im.queries){ say('#pmsg', 'vòng này chưa có bộ câu hỏi nào để xoá', 'err'); return; }
+
+  const lbl = (ROUNDS.find(r => r.id === ROUND) || {}).label || ROUND;
+  let warn = 'Xoá bộ câu hỏi của ' + lbl + '?\n\n'
+    + '· ' + im.queries + ' câu hỏi sẽ bị xoá\n'
+    + '· ' + im.assignments + ' phân công sẽ bị xoá'
+    + (im.people.length ? ' (' + im.people.join(', ') + ')' : '') + '\n';
+  if(im.linked_subs.length){
+    warn += '· ' + im.linked_subs.length + ' CSV đang gắn vào bộ này sẽ GIỮ NGUYÊN,\n'
+          + '  nạp lại đúng bộ đó thì chúng tự nối lại.\n';
+  }
+  warn += '\nKhông hoàn tác được.';
+  if(!confirm(warn)) return;
+
+  try{
+    const j = await jpost('/api/queries/delete', {round: ROUND});
+    say('#pmsg', 'đã xoá ' + j.deleted_queries + ' câu và '
+      + j.deleted_assignments + ' phân công của ' + lbl, 'ok');
+    S('#raw').value = '';
+    await loadQs();
+  }catch(e){ say('#pmsg', e.message, 'err'); }
 };
 
 S('#csvfile').onchange = async ev => {

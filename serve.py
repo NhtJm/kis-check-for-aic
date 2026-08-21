@@ -162,6 +162,10 @@ class Handler(SimpleHTTPRequestHandler):
                                         "status": team.round_status(store()),
                                         "can_switch": self._admin()})
 
+            if path == "/api/queries/impact":
+                return self._json(200, {"ok": True,
+                    **team.queries_impact(store(), q.get("round") or current_round_of())})
+
             if path == "/api/queries":
                 rnd = q.get("round") or current_round_of()
                 qs = team.load_queries(store(), rnd)
@@ -269,6 +273,14 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self._admin():
                     return self._need_admin()
                 return self._queries_post()
+            if path == "/api/queries/delete":
+                if not self._admin():
+                    return self._need_admin()
+                req = json.loads(self._body(4096) or b"{}")
+                rnd = req.get("round") or current_round_of()
+                rep_ = team.delete_queries(store(), rnd, bool(req.get("unlink")))
+                sys.stderr.write(f"\n[queries] XOA vong {rnd}: {rep_}\n")
+                return self._json(200, {"ok": True, **rep_})
             if path == "/api/qassign":
                 if not self._admin():
                     return self._need_admin()
