@@ -461,3 +461,31 @@ gcloud run services update kis-check-for-aic --region asia-southeast1 \
 
 Đây là rào cho nhóm nội bộ, không phải hệ xác thực thật — mọi người dùng chung
 một mật khẩu và tên chỉ để phân việc, không xác minh danh tính.
+
+## Bổ sung frame cho video mới
+
+Server trên cloud **không tự tải video được** — YouTube chặn IP datacenter. Máy bạn
+thì tải bình thường. Nên khi có submission dùng video chưa có frame, chạy ở máy:
+
+```bash
+python3 sync_frames.py --from-server
+```
+
+Nó đọc danh sách submission thẳng từ server, so với bucket, rồi chỉ tải + trích +
+đẩy lên phần còn thiếu. Xem trước khi làm:
+
+```bash
+python3 sync_frames.py --from-server --dry-run
+```
+
+Hoặc chỉ định một CSV cụ thể:
+
+```bash
+python3 sync_frames.py submission.csv
+```
+
+Cần `KIS_PASSWORD` khi dùng `--from-server`.
+
+**Chỉ chấm điểm mới cần bước này.** Xem video và tua theo frame chạy được với mọi
+video trong dataset, không phụ thuộc bucket — player phát thẳng từ YouTube trong
+trình duyệt, server không đụng vào.
