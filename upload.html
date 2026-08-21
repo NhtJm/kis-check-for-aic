@@ -37,28 +37,41 @@
   </div>
 
   <h2>Đã nộp</h2>
-  <div class="card"><table><thead><tr><th class="mono">tên</th><th>dòng</th><th>video</th>
-    <th class="mono">query</th></tr></thead><tbody id="tb"></tbody></table>
+  <div class="card">
+    <label class="ctl" style="font-size:12px;color:var(--dim);display:flex;align-items:center;gap:7px">
+      <input type="checkbox" id="onlyround" checked> Chỉ hiện vòng đang mở</label>
+    <table style="margin-top:10px"><thead><tr><th class="mono">tên</th><th>vòng</th>
+      <th>dòng</th><th>video</th><th class="mono">query</th></tr></thead>
+      <tbody id="tb"></tbody></table>
     <div id="none" class="sub">chưa có submission nào</div></div>
 </div>
 <script src="app.js"></script>
 <script>
 let ROUND = '';
+let RLABEL = {};
 async function refresh(){
   const j = await jget('/api/submissions');
-  const items = j.items || [];
+  let items = j.items || [];
+  if(S('#onlyround').checked) items = items.filter(m => (m.round || '') === ROUND);
   S('#none').style.display = items.length ? 'none' : '';
+  S('#none').textContent = (j.items || []).length
+    ? 'không có submission nào trong vòng này' : 'chưa có submission nào';
   const tb = S('#tb'); tb.innerHTML = '';
   items.forEach(m => {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td class="mono"></td>';
+    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td></td><td class="mono"></td>';
     tr.children[0].textContent = m.name;
-    tr.children[1].textContent = m.rows;
-    tr.children[2].textContent = (m.videos || []).length;
-    tr.children[3].textContent = m.query_id || '—';
+    const r = m.round || '';
+    tr.children[1].innerHTML = r
+      ? '<span class="tag' + (r === ROUND ? ' me' : '') + '">' + (RLABEL[r] || r) + '</span>'
+      : '<span class="tag">— chưa rõ —</span>';
+    tr.children[2].textContent = m.rows;
+    tr.children[3].textContent = (m.videos || []).length;
+    tr.children[4].textContent = m.query_id || '—';
     tb.appendChild(tr);
   });
 }
+S('#onlyround').onchange = refresh;
 function reportZip(j){
   const box = S('#zrep'); box.innerHTML = '';
   const mk = (title, rows, cls) => {
@@ -141,7 +154,8 @@ S('#go').onclick = async () => {
   if(!await guard(true)) return;
   const r = await jget('/api/round');
   ROUND = r.round;
-  S('#rtag').textContent = (r.rounds.find(x => x.id === ROUND) || {}).label || ROUND;
+  (r.rounds || []).forEach(x => RLABEL[x.id] = x.label);
+  S('#rtag').textContent = RLABEL[ROUND] || ROUND;
   const q = await jget('/api/queries?round=' + encodeURIComponent(ROUND));
   (q.queries || []).forEach(x => {
     const o = document.createElement('option');

@@ -296,7 +296,8 @@ class Handler(SimpleHTTPRequestHandler):
         name = q.get("name") or "submission"
         people = [p for p in (q.get("people") or "").split(",") if p.strip()]
         try:
-            meta = team.save_submission(store(), name, data, people or None)
+            meta = team.save_submission(store(), name, data, people or None,
+                                        q.get("round") or current_round_of())
             if q.get("query_id"):
                 meta = team.link_submission(store(), q["query_id"], meta["name"],
                                             q.get("round") or current_round_of())

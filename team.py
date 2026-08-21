@@ -124,15 +124,17 @@ def assignment_stats(rows, plan):
 
 
 # ---------- submission ----------
-def save_submission(store, name, csv_bytes, people=None):
+def save_submission(store, name, csv_bytes, people=None, round_name=None):
     name = slug(name, "submission")
     rows = parse_csv(csv_bytes)
     if not rows:
         raise ValueError("khong doc duoc dong nao hop le trong CSV")
     store.write(f"submissions/{name}.csv", csv_bytes)
+    # Ghi vong ngay tu day: file khong khop cau hoi nao van phai biet thuoc vong nao.
     meta = {"name": name, "rows": len(rows),
             "videos": sorted({r["video"] for r in rows}),
-            "uploaded": time.time(), "scored": False}
+            "uploaded": time.time(), "scored": False,
+            "round": round_name or current_round(store)}
     store.write(f"meta/{name}.json", json.dumps(meta, ensure_ascii=False))
     if people:
         set_assignment(store, name, rows, people)
@@ -474,7 +476,7 @@ def ingest_zip(store, data, round_name=None, people=None, log=lambda m: None):
         qid, how = match_query(name, known)
         sub = slug(os.path.splitext(os.path.basename(name))[0], "submission")
         try:
-            meta = save_submission(store, sub, raw, people or None)
+            meta = save_submission(store, sub, raw, people or None, round_name)
         except ValueError as e:
             failed.append({"file": name, "error": str(e)}); continue
         if qid:
