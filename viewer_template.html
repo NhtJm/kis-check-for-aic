@@ -10,7 +10,7 @@
     --bg:#0d0f13; --panel:#14171d; --panel2:#191d25; --line:#252b35;
     --fg:#e7eaf0; --dim:#8e97a6; --faint:#5d6675;
     --accent:#4c9dff; --ok:#34d399; --no:#f87171; --maybe:#fbbf24;
-    --listw:296px;
+    --listw:296px; --qw:340px;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   }
   html,body{height:100%}
@@ -95,19 +95,26 @@
   .tag.kis{border-color:#2b5c8f;color:#9ecbff}
   .tag.qa{border-color:#7a5a12;color:var(--maybe)}
   .tag.trake{border-color:#1f6b52;color:var(--ok)}
-  #qtask{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+  #qtask{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+  #qnone{font-size:12px;color:var(--faint);line-height:1.6;padding:2px}
   #qtask .qhead{display:flex;align-items:center;gap:8px;margin-bottom:5px}
   #qtask .qtext{font-size:13px;line-height:1.6;color:var(--fg);white-space:pre-wrap}
   #qtask .qev{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:6px;line-height:1.7}
   #syncst{font-size:11px;color:var(--faint);font-family:var(--mono);min-width:62px}
 
   /* ---------- thanh query ---------- */
-  .qbar{display:none;align-items:center;gap:9px;padding:9px 14px;background:var(--panel2);
-        border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
-  body.api .qbar{display:flex}
-  .qbar input[type=text]{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);
-        color:var(--fg);border-radius:7px;padding:7px 11px;font-size:13px;font-family:inherit}
-  .qbar input[type=text]:focus{outline:0;border-color:var(--accent)}
+  /* Cot query ben phai, xep doc -- de bai dai van doc het khong phai lan. */
+  #qpanel{display:none;flex-direction:column;min-width:0;min-height:0;
+          background:var(--panel);border-left:1px solid var(--line);overflow-y:auto}
+  body.api #qpanel{display:flex}
+  .qbar{display:flex;flex-direction:column;align-items:stretch;gap:9px;padding:12px 13px}
+  .qbar .lbl{margin:0 0 3px}
+  .qrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  #query{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--fg);
+        border-radius:8px;padding:9px 11px;font-size:13px;line-height:1.55;font-family:inherit;
+        resize:vertical;min-height:76px;overflow:hidden}
+  #query:focus{outline:0;border-color:var(--accent)}
+  #qpanel select{width:100%}
   .qbar input[type=number]{width:56px;background:var(--panel);border:1px solid var(--line);color:var(--fg);
         border-radius:6px;padding:5px 7px;font-family:var(--mono);font-size:12px}
   .qbar select{background:var(--panel);border:1px solid var(--line);color:var(--fg);
@@ -125,7 +132,7 @@
   .offnote{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 
   /* ---------- layout ---------- */
-  main{flex:1;display:grid;grid-template-columns:var(--listw) 5px 1fr;min-height:0}
+  main{flex:1;display:grid;grid-template-columns:var(--listw) 5px 1fr var(--qw);min-height:0}
   #list{overflow-y:auto;background:var(--panel);min-width:0}
   #split{background:var(--line);cursor:col-resize;position:relative;touch-action:none}
   #split::before{content:'';position:absolute;inset:0 -5px}   /* vung bam rong hon net ve */
@@ -135,7 +142,7 @@
   .hidden{display:none!important}
   body.resizing{cursor:col-resize;user-select:none}
   body.resizing #player{pointer-events:none}   /* iframe khong cuop chuot khi dang keo */
-  body.empty main{grid-template-columns:1fr}
+  body.empty main{grid-template-columns:1fr var(--qw)}
   /* an #stage chu khong an #right, neu khong thanh query bien mat luc chua nap CSV */
   body.empty #list,body.empty #split,body.empty #stage{display:none}
 
@@ -211,8 +218,9 @@
       border-radius:4px;padding:1px 5px;font-size:11px;color:var(--dim)}
 
   @media (max-width:900px){
-    main{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    main{grid-template-columns:1fr;grid-template-rows:auto auto auto}
     #split{display:none}
+    #qpanel{order:3;border-left:0;border-top:1px solid var(--line);max-height:46vh}
     #list{border-top:1px solid var(--line);max-height:36vh;order:2}
     #right{order:1;min-height:0}
     .fname{max-width:110px}
@@ -287,25 +295,6 @@
        title="Kéo để đổi độ rộng · bấm đúp để về mặc định"></div>
 
   <div id="right">
-  <div class="qbar">
-    <span class="lbl" style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em">Query</span>
-    <input type="text" id="query" placeholder="Mô tả cảnh cần tìm — vd: bốn phi hành gia mặc áo đen đứng trước tàu vũ trụ">
-    <label class="ctl">± <input type="number" id="win" value="90" min="0" step="30"> frame</label>
-    <label class="ctl">bước <input type="number" id="stp" value="30" min="1" step="10"></label>
-    <label class="ctl chk" id="trwrap" style="display:none"
-           title="Dịch query sang tiếng Anh trước khi chấm. Chỉ tốn 1 lệnh gọi API cho cả lượt.">
-      <input type="checkbox" id="translate" checked> Dịch sang tiếng Anh</label>
-    <select id="backend" title="Chọn nơi chấm điểm">
-      <option value="siglip">SigLIP (local, miễn phí)</option>
-      <option value="hybrid" disabled>SigLIP lọc → VLM rerank top 20 (nhanh, rẻ)</option>
-      <option value="api" disabled>VLM chấm hết (chậm &amp; tốn)</option>
-    </select>
-    <button class="btn primary" id="run">Chấm điểm</button>
-    <span id="qstatus"></span>
-    <div id="qen" style="display:none;flex-basis:100%;font-size:12px;color:var(--dim);
-         font-family:var(--mono);padding-left:2px"></div>
-    <div id="qtask" style="display:none;flex-basis:100%;margin-top:2px"></div>
-  </div>
   <div id="empty">
     <div class="zone" id="zone">
       <div style="font-size:34px">📄</div>
@@ -370,6 +359,32 @@
     </div>
   </div>
   </div>
+  <aside id="qpanel">
+  <div class="qbar">
+    <div>
+      <span class="lbl">Đề bài / câu cần tìm</span>
+      <textarea id="query" rows="3"
+        placeholder="Mô tả cảnh cần tìm — vd: bốn phi hành gia mặc áo đen đứng trước tàu vũ trụ"></textarea>
+    </div>
+    <div id="qtask" style="display:none"></div>
+    <div id="qnone">Submission này chưa gắn câu hỏi nào — gõ mô tả vào ô trên để chấm.</div>
+    <div class="qrow">
+      <label class="ctl">± <input type="number" id="win" value="90" min="0" step="30"> frame</label>
+      <label class="ctl">bước <input type="number" id="stp" value="30" min="1" step="10"></label>
+    </div>
+    <label class="ctl chk" id="trwrap" style="display:none"
+           title="Dịch query sang tiếng Anh trước khi chấm. Chỉ tốn 1 lệnh gọi API cho cả lượt.">
+      <input type="checkbox" id="translate" checked> Dịch sang tiếng Anh</label>
+    <select id="backend" title="Chọn nơi chấm điểm">
+      <option value="siglip">SigLIP (local, miễn phí)</option>
+      <option value="hybrid" disabled>SigLIP lọc → VLM rerank top 20 (nhanh, rẻ)</option>
+      <option value="api" disabled>VLM chấm hết (chậm &amp; tốn)</option>
+    </select>
+    <button class="btn primary" id="run">Chấm điểm</button>
+    <span id="qstatus"></span>
+    <div id="qen" style="display:none;font-size:12px;color:var(--dim);font-family:var(--mono)"></div>
+  </div>
+  </aside>
 </main>
 
 <script>
@@ -841,7 +856,12 @@ async function runScoring(){
 }
 function setQ(msg, cls){ const el = $('#qstatus'); el.textContent = msg; el.className = cls || ''; }
 $('#run').onclick = runScoring;
-$('#query').onkeydown = ev => { if(ev.key === 'Enter'){ ev.preventDefault(); runScoring(); } };
+$('#query').oninput = fitQuery;
+window.addEventListener('resize', fitQuery);
+$('#query').onkeydown = ev => {
+  // Enter xuong dong nhu binh thuong; Ctrl/Cmd+Enter moi cham diem.
+  if(ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)){ ev.preventDefault(); runScoring(); }
+};
 
 $('#exportsub').onclick = () => {
   const ranked = byScore();
@@ -952,23 +972,37 @@ async function openSub(name){
   loadProgress();
 }
 
+// O query tu gian cho vua noi dung -- de bai dai van doc het, khong phai lan.
+function fitQuery(){
+  const el = $('#query');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.42)) + 'px';
+  el.style.overflowY = el.scrollHeight > window.innerHeight * 0.42 ? 'auto' : 'hidden';
+}
+
 function showTask(q){
-  const box = $('#qtask');
-  if(!q){ box.style.display = 'none'; return; }
+  const box = $('#qtask'), none = $('#qnone');
+  if(!q){
+    box.style.display = 'none';
+    none.style.display = '';
+    none.textContent = 'Submission này chưa gắn câu hỏi nào — gõ mô tả vào ô trên để chấm.';
+    return;
+  }
+  none.style.display = 'none';
   box.style.display = '';
   box.innerHTML = '<div class="qhead"><span class="tag i"></span><span class="tag k"></span>'
                 + '<span class="note" style="color:var(--faint);font-size:11px"></span></div>'
-                + '<div class="qtext"></div><div class="qev"></div>';
+                + '<div class="qev"></div>';
   box.querySelector('.tag.i').textContent = q.id;
   const k = box.querySelector('.tag.k');
   k.textContent = q.kind || 'kis'; k.className = 'tag k ' + (q.kind || 'kis');
   box.querySelector('.note').textContent = q.missing
     ? '(bộ câu hỏi của vòng này đã bị xoá)' : 'đề bài của submission đang mở';
-  box.querySelector('.qtext').textContent = q.text || '';
   box.querySelector('.qev').textContent = (q.events || [])
     .map(e => e.id + ': ' + e.text).join('\n');
-  // Dien san vao o query de cham diem, khoi phai chep tay
-  if(q.text && !$('#query').value.trim()) $('#query').value = q.text;
+  // De bai vao thang o query: doc va cham deu tu day, khong phai chep tay
+  if(q.text) $('#query').value = q.text;
+  fitQuery();
 }
 
 async function loadProgress(){
@@ -1055,6 +1089,7 @@ fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken,
   // Phai gan TRUOC khoi if(teamOn) ben duoi, vi loadSubs() trong do can teamRound
   // de loc submission theo vong.
   teamRound = j.round || '';
+  if(!j.team) $('#qnone').style.display = 'none';
   if(!teamOn || !j.auth_required){
     $('#tohub').classList.add('hidden');
     $('#dologout').classList.add('hidden');
