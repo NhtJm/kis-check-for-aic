@@ -41,7 +41,7 @@
     <label class="ctl" style="font-size:12px;color:var(--dim);display:flex;align-items:center;gap:7px">
       <input type="checkbox" id="onlyround" checked> Chỉ hiện vòng đang mở</label>
     <table style="margin-top:10px"><thead><tr><th class="mono">tên</th><th>vòng</th>
-      <th>dòng</th><th>video</th><th class="mono">query</th></tr></thead>
+      <th>dòng</th><th>video</th><th class="mono">query</th><th></th></tr></thead>
       <tbody id="tb"></tbody></table>
     <div id="none" class="sub">chưa có submission nào</div></div>
 </div>
@@ -59,7 +59,7 @@ async function refresh(){
   const tb = S('#tb'); tb.innerHTML = '';
   items.forEach(m => {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td></td><td class="mono"></td>';
+    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td></td><td class="mono"></td><td></td>';
     tr.children[0].textContent = m.name;
     const r = m.round || '';
     tr.children[1].innerHTML = r
@@ -68,6 +68,24 @@ async function refresh(){
     tr.children[2].textContent = m.rows;
     tr.children[3].textContent = (m.videos || []).length;
     tr.children[4].textContent = m.query_id || '—';
+    const d = document.createElement('button');
+    d.className = 'btn danger'; d.textContent = '🗑';
+    d.title = 'Xoá CSV này';
+    d.onclick = async () => {
+      let extra = '';
+      try{
+        const im = await jget('/api/sub/impact?name=' + encodeURIComponent(m.name));
+        const who = Object.entries(im.markers || {});
+        if(who.length) extra = '\nĐánh dấu sẽ mất: '
+          + who.map(([w,n]) => w + ' ' + n + ' dòng').join(', ');
+      }catch(e){}
+      if(!confirm('Xoá CSV "' + m.name + '" (' + m.rows + ' dòng)?' + extra
+        + '\n\nKhông hoàn tác được.')) return;
+      try{ await jpost('/api/sub/delete', {name: m.name});
+           say('#msg', 'đã xoá ' + m.name, 'ok'); await refresh(); }
+      catch(e){ say('#msg', e.message, 'err'); }
+    };
+    tr.children[5].appendChild(d);
     tb.appendChild(tr);
   });
 }

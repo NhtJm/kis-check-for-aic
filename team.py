@@ -537,3 +537,62 @@ def queries_impact(store, round_name=None):
             "assignments": sum(len(v) for v in plan.values()),
             "people": sorted(p for p, v in plan.items() if v),
             "linked_subs": linked}
+
+
+def delete_submission(store, name):
+    """Xoa han mot CSV: file, metadata, phan cong video, va danh dau cua MOI nguoi."""
+    n = slug(name)
+    marks_removed = 0
+    for f in store.list(f"marks/{n}"):
+        if f.endswith(".json"):
+            store.delete(f"marks/{n}/{f}")
+            marks_removed += 1
+    store.delete(f"submissions/{n}.csv")
+    store.delete(f"meta/{n}.json")
+    store.delete(f"assign/{n}.json")
+    return {"sub": n, "marks_files_removed": marks_removed}
+
+
+def delete_query(store, qid, round_name=None, with_subs=False):
+    """Xoa mot cau hoi khoi vong. Tuy chon xoa luon cac CSV dang gan vao no."""
+    round_name = round_name or current_round(store)
+    qs = load_queries(store, round_name)
+    if not any(q["id"] == qid for q in qs):
+        raise ValueError(f"vong nay khong co cau '{qid}'")
+
+    save_queries(store, [q for q in qs if q["id"] != qid], round_name)
+
+    plan = load_query_assignment(store, round_name)
+    removed_assign = 0
+    for p in list(plan):
+        before = len(plan[p])
+        plan[p] = [i for i in plan[p] if i != qid]
+        removed_assign += before - len(plan[p])
+    save_query_assignment(store, plan, round_name)
+
+    subs = [m["name"] for m in list_submissions(store) if m.get("query_id") == qid]
+    deleted, unlinked = [], 0
+    if with_subs:
+        for s in subs:
+            delete_submission(store, s)
+            deleted.append(s)
+    else:
+        for s in subs:                       # giu file, chi cat lien ket
+            m = load_meta(store, s) or {}
+            m.pop("query_id", None)
+            store.write(f"meta/{slug(s)}.json", json.dumps(m, ensure_ascii=False))
+            unlinked += 1
+
+    return {"query_id": qid, "round": round_name, "removed_assign": removed_assign,
+            "deleted_subs": deleted, "unlinked_subs": unlinked,
+            "remaining": len(qs) - 1}
+
+
+def submission_impact(store, name):
+    """Xoa mot CSV se mat gi."""
+    n = slug(name)
+    m = load_meta(store, n) or {}
+    marks = load_all_marks(store, n)
+    return {"sub": n, "rows": m.get("rows", 0), "query_id": m.get("query_id"),
+            "round": m.get("round"),
+            "markers": {w: len(j.get("marks") or {}) for w, j in marks.items()}}

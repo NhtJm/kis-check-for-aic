@@ -10,7 +10,7 @@
     --bg:#0d0f13; --panel:#14171d; --panel2:#191d25; --line:#252b35;
     --fg:#e7eaf0; --dim:#8e97a6; --faint:#5d6675;
     --accent:#4c9dff; --ok:#34d399; --no:#f87171; --maybe:#fbbf24;
-    --listw:392px;
+    --listw:296px;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   }
   html,body{height:100%}
@@ -92,6 +92,13 @@
   .tag{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;
        background:var(--panel);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
   .tag.now{border-color:var(--no);color:var(--no);background:#2a1214;font-weight:600}
+  .tag.kis{border-color:#2b5c8f;color:#9ecbff}
+  .tag.qa{border-color:#7a5a12;color:var(--maybe)}
+  .tag.trake{border-color:#1f6b52;color:var(--ok)}
+  #qtask{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+  #qtask .qhead{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+  #qtask .qtext{font-size:13px;line-height:1.6;color:var(--fg);white-space:pre-wrap}
+  #qtask .qev{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:6px;line-height:1.7}
   #syncst{font-size:11px;color:var(--faint);font-family:var(--mono);min-width:62px}
 
   /* ---------- thanh query ---------- */
@@ -297,6 +304,7 @@
     <span id="qstatus"></span>
     <div id="qen" style="display:none;flex-basis:100%;font-size:12px;color:var(--dim);
          font-family:var(--mono);padding-left:2px"></div>
+    <div id="qtask" style="display:none;flex-basis:100%;margin-top:2px"></div>
   </div>
   <div id="empty">
     <div class="zone" id="zone">
@@ -685,7 +693,7 @@ function step(d){
 /* ---------- keo chia do rong hai cot ---------- */
 (function(){
   const sp = $('#split'), root = document.documentElement;
-  const MIN_L = 240, MIN_R = 340, DEF = 392;
+  const MIN_L = 220, MIN_R = 340, DEF = 296;   // hep vua du doc ma-video, chua danh cho video
   const setW = w => root.style.setProperty('--listw', w + 'px');
   const clamp = w => Math.max(MIN_L, Math.min(w, window.innerWidth - MIN_R));
 
@@ -927,6 +935,7 @@ async function openSub(name){
   if(!j.ok) return;
   teamSub  = j.name;
   myVideos = j.my_videos || [];
+  showTask(j.query);
   localStorage.setItem('kis-sub', teamSub);
 
   loadRows(j.rows.map(r => ({video: r[0], frame: r[1]})), teamSub + '.csv');
@@ -941,6 +950,25 @@ async function openSub(name){
   render();
   if(rowsOf().length) select(rowsOf()[0].rank - 1);
   loadProgress();
+}
+
+function showTask(q){
+  const box = $('#qtask');
+  if(!q){ box.style.display = 'none'; return; }
+  box.style.display = '';
+  box.innerHTML = '<div class="qhead"><span class="tag i"></span><span class="tag k"></span>'
+                + '<span class="note" style="color:var(--faint);font-size:11px"></span></div>'
+                + '<div class="qtext"></div><div class="qev"></div>';
+  box.querySelector('.tag.i').textContent = q.id;
+  const k = box.querySelector('.tag.k');
+  k.textContent = q.kind || 'kis'; k.className = 'tag k ' + (q.kind || 'kis');
+  box.querySelector('.note').textContent = q.missing
+    ? '(bộ câu hỏi của vòng này đã bị xoá)' : 'đề bài của submission đang mở';
+  box.querySelector('.qtext').textContent = q.text || '';
+  box.querySelector('.qev').textContent = (q.events || [])
+    .map(e => e.id + ': ' + e.text).join('\n');
+  // Dien san vao o query de cham diem, khoi phai chep tay
+  if(q.text && !$('#query').value.trim()) $('#query').value = q.text;
 }
 
 async function loadProgress(){

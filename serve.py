@@ -162,6 +162,10 @@ class Handler(SimpleHTTPRequestHandler):
                                         "status": team.round_status(store()),
                                         "can_switch": self._admin()})
 
+            if path == "/api/sub/impact":
+                return self._json(200, {"ok": True,
+                    **team.submission_impact(store(), q.get("name", ""))})
+
             if path == "/api/queries/impact":
                 return self._json(200, {"ok": True,
                     **team.queries_impact(store(), q.get("round") or current_round_of())})
@@ -204,11 +208,21 @@ class Handler(SimpleHTTPRequestHandler):
                 if who:
                     allm = team.load_all_marks(store(), name)
                     marks = (allm.get(who) or {}).get("marks", {})
+                meta = team.load_meta(store(), name) or {}
+                # Kem theo cau hoi tuong ung: dang kiem tra ma khong thay de bai
+                # thi phai nho hoac di tim, rat de cham nham.
+                qinfo = None
+                if meta.get("query_id"):
+                    rnd = meta.get("round") or current_round_of()
+                    qinfo = next((x for x in team.load_queries(store(), rnd)
+                                  if x["id"] == meta["query_id"]),
+                                 {"id": meta["query_id"], "kind": "kis",
+                                  "text": "", "events": [], "missing": True})
                 return self._json(200, {"ok": True, "name": team.slug(name),
                                         "rows": [[r["video"], r["frame"]] for r in rows],
                                         "assign": plan, "my_videos": mine,
                                         "my_marks": marks,
-                                        "meta": team.load_meta(store(), name)})
+                                        "meta": meta, "query": qinfo})
 
             if path == "/api/progress":
                 return self._json(200, {"ok": True, **team.progress(store(), q.get("name", ""))})
@@ -273,6 +287,30 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self._admin():
                     return self._need_admin()
                 return self._queries_post()
+            if path == "/api/query/delete":
+                if not self._admin():
+                    return self._need_admin()
+                req = json.loads(self._body(4096) or b"{}")
+                try:
+                    rep_ = team.delete_query(store(), req.get("query_id", ""),
+                                             req.get("round") or current_round_of(),
+                                             bool(req.get("with_subs")))
+                except ValueError as e:
+                    return self._json(400, {"ok": False, "error": str(e)})
+                sys.stderr.write(f"\n[query] XOA {rep_}\n")
+                return self._json(200, {"ok": True, **rep_})
+
+            if path == "/api/sub/delete":
+                if not self._admin():
+                    return self._need_admin()
+                req = json.loads(self._body(4096) or b"{}")
+                name = req.get("name", "")
+                if not team.load_meta(store(), name):
+                    return self._json(404, {"ok": False, "error": "khong co submission nay"})
+                rep_ = team.delete_submission(store(), name)
+                sys.stderr.write(f"\n[sub] XOA {rep_}\n")
+                return self._json(200, {"ok": True, **rep_})
+
             if path == "/api/queries/delete":
                 if not self._admin():
                     return self._need_admin()

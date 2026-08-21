@@ -21,7 +21,7 @@
   <h2>Câu hỏi trong vòng <span id="rname" class="tag"></span></h2>
   <div class="card">
     <table><thead><tr><th class="mono">query</th><th>loại</th><th>mô tả</th>
-      <th>CSV submission</th></tr></thead><tbody id="qtb"></tbody></table>
+      <th>CSV submission</th><th></th></tr></thead><tbody id="qtb"></tbody></table>
     <div id="empty" class="sub">chưa có câu hỏi nào</div>
   </div>
 </div>
@@ -47,7 +47,7 @@ function paintQs(){
   const tb = S('#qtb'); tb.innerHTML = '';
   QS.forEach(q => {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td></td>';
+    tr.innerHTML = '<td class="mono"></td><td></td><td></td><td></td><td></td>';
     const td = tr.children;
     td[0].textContent = q.id;
     td[1].innerHTML = '<span class="tag ' + q.kind + '">' + q.kind + '</span>'
@@ -62,7 +62,19 @@ function paintQs(){
     up.className = 'btn'; up.textContent = '⬆ CSV';
     up.onclick = () => { pendingQid = q.id; S('#csvfile').click(); };
     wrap.appendChild(lbl); wrap.appendChild(up);
+    if(has.length){
+      const dc = document.createElement('button');
+      dc.className = 'btn danger'; dc.textContent = '🗑 CSV';
+      dc.title = 'Xoá các CSV đang gắn vào câu này';
+      dc.onclick = () => delSubs(q.id, has);
+      wrap.appendChild(dc);
+    }
     td[3].appendChild(wrap);
+
+    const dq = document.createElement('button');
+    dq.className = 'btn danger'; dq.textContent = '🗑 Xoá câu';
+    dq.onclick = () => delQuery(q, has);
+    td[4].appendChild(dq);
     tb.appendChild(tr);
   });
 }
@@ -86,6 +98,48 @@ S('#parse').onclick = async () => {
   }catch(e){ say('#pmsg', e.message, 'err'); }
   S('#parse').disabled = false;
 };
+
+async function delSubs(qid, subs){
+  let detail = '';
+  for(const s of subs){
+    try{
+      const im = await jget('/api/sub/impact?name=' + encodeURIComponent(s));
+      const who = Object.entries(im.markers || {});
+      detail += '· ' + s + ' (' + im.rows + ' dòng'
+        + (who.length ? ', đã chấm: ' + who.map(([w,n]) => w + ' ' + n).join(', ') : '')
+        + ')\n';
+    }catch(e){ detail += '· ' + s + '\n'; }
+  }
+  if(!confirm('Xoá ' + subs.length + ' CSV gắn vào ' + qid + '?\n\n' + detail
+      + '\nMọi đánh dấu của cả nhóm trên các file này cũng mất.\nKhông hoàn tác được.')) return;
+  try{
+    for(const s of subs) await jpost('/api/sub/delete', {name: s});
+    say('#pmsg', 'đã xoá ' + subs.length + ' CSV của ' + qid, 'ok');
+    await loadQs();
+  }catch(e){ say('#pmsg', e.message, 'err'); }
+}
+
+async function delQuery(q, subs){
+  let msg = 'Xoá câu ' + q.id + '?\n\n';
+  if(subs.length){
+    msg += 'Câu này đang có ' + subs.length + ' CSV: ' + subs.join(', ') + '\n\n'
+         + 'OK  = xoá câu VÀ xoá luôn các CSV đó (mất cả đánh dấu)\n'
+         + 'Huỷ = không làm gì\n\n'
+         + 'Muốn giữ CSV thì bấm Huỷ, dùng nút "🗑 Xoá câu" sau khi đã tách CSV ra.';
+  }else{
+    msg += 'Câu này chưa có CSV nào.';
+  }
+  msg += '\n\nKhông hoàn tác được.';
+  if(!confirm(msg)) return;
+  try{
+    const j = await jpost('/api/query/delete',
+      {round: ROUND, query_id: q.id, with_subs: subs.length > 0});
+    say('#pmsg', 'đã xoá ' + q.id
+      + (j.deleted_subs.length ? ' và ' + j.deleted_subs.length + ' CSV' : '')
+      + ' — còn ' + j.remaining + ' câu', 'ok');
+    await loadQs();
+  }catch(e){ say('#pmsg', e.message, 'err'); }
+}
 
 S('#wipe').onclick = async () => {
   let im;
