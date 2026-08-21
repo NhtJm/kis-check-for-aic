@@ -415,3 +415,49 @@ một lệnh gọi mỗi frame. Query vốn đã tiếng Anh thì bỏ qua, khô
 Đã kiểm chứng: bản dịch tự động cho kết quả trùng khớp với query tiếng Anh viết tay
 — cùng thứ tự, cùng giá trị cosine.
 
+
+## Nhiều người cùng kiểm tra một submission
+
+Thay cho việc gửi CSV qua Messenger rồi ghép kết quả bằng tay:
+
+1. Ai đó **Nộp CSV** ngay trên web, nhập danh sách người kiểm tra.
+2. Server chia việc **theo video**, cân bằng số dòng.
+3. Mỗi người mở link, gõ tên mình, thấy đúng phần của mình.
+4. Đánh dấu tự lưu lên server; tiến độ cả nhóm hiện realtime.
+5. Bấm **File gộp** để tải CSV cuối, đã ghép mọi người.
+
+### Vì sao chia theo video chứ không theo dòng
+
+Thao tác đắt nhất khi kiểm tra là đợi player nạp lại video, không phải xem frame.
+Gom trọn một video cho một người thì họ mở một lần rồi check hết mọi dòng thuộc
+video đó. Đo trên dữ liệu thật, chia cho 5 người:
+
+| Submission | Chia theo dòng | Chia theo video |
+|---|---|---|
+| kis-1 (100 dòng, 11 video) | mỗi người mở tới 11 video | **2-3 video** |
+| kis-3 (100 dòng, 57 video) | mỗi người mở ~20 video | **11-12 video** |
+
+Cân bằng tải vẫn tốt: 19-21 dòng mỗi người.
+
+### Không cần database
+
+Mỗi người ghi vào đúng file của riêng mình:
+
+```
+marks/{submission}/{tên}.json
+```
+
+Không file nào bị hai người ghi cùng lúc nên không có tranh chấp, không cần
+transaction, không cần Firestore. Gộp = đọc N file nhỏ rồi cộng lại.
+
+### Mật khẩu chung
+
+Đặt `KIS_PASSWORD`; bỏ trống thì ai có link cũng vào được.
+
+```bash
+gcloud run services update kis-check-for-aic --region asia-southeast1 \
+  --update-env-vars KIS_PASSWORD='...'
+```
+
+Đây là rào cho nhóm nội bộ, không phải hệ xác thực thật — mọi người dùng chung
+một mật khẩu và tên chỉ để phân việc, không xác minh danh tính.

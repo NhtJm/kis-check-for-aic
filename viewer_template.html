@@ -56,6 +56,40 @@
   #drop div{border:2px dashed var(--accent);border-radius:16px;padding:52px 76px;
         font-size:17px;font-weight:600;color:var(--accent)}
 
+  /* ---------- dang nhap ---------- */
+  #gate{position:fixed;inset:0;z-index:100;background:var(--bg);display:none;
+        align-items:center;justify-content:center}
+  body.locked #gate{display:flex}
+  #gate .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+        padding:30px 34px;width:min(360px,90vw);display:flex;flex-direction:column;gap:12px}
+  #gate h2{font-size:17px;font-weight:650}
+  #gate p{font-size:12.5px;color:var(--dim);line-height:1.6}
+  #gate input{background:var(--panel2);border:1px solid var(--line);color:var(--fg);
+        border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit}
+  #gate input:focus{outline:0;border-color:var(--accent)}
+  #gateerr{font-size:12px;color:var(--no);min-height:16px}
+
+  /* ---------- thanh team ---------- */
+  /* Ten class phai KHAC ten class co tren <body>, neu khong rule nay se bat vao
+     chinh body va lam ca trang bien mat. */
+  .teambar{display:none;align-items:center;gap:9px;padding:8px 14px;background:var(--panel2);
+        border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
+  body.team .teambar{display:flex}
+  .teambar select,.teambar input[type=text]{background:var(--panel);border:1px solid var(--line);
+        color:var(--fg);border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit}
+  .teambar input[type=text]{width:130px}
+  .teambar select{max-width:210px}
+  .prog{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .bar2{width:120px;height:7px;background:var(--panel);border:1px solid var(--line);
+        border-radius:4px;overflow:hidden}
+  .bar2 i{display:block;height:100%;background:var(--ok);width:0}
+  #who{display:flex;gap:5px;flex-wrap:wrap}
+  .whochip{font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:5px;
+        background:var(--panel);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .whochip.me{border-color:var(--accent);color:var(--accent)}
+  .whochip.full{border-color:var(--ok);color:var(--ok)}
+  #syncst{font-size:11px;color:var(--faint);font-family:var(--mono);min-width:62px}
+
   /* ---------- thanh query ---------- */
   .qbar{display:none;align-items:center;gap:9px;padding:9px 14px;background:var(--panel2);
         border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
@@ -168,6 +202,28 @@
 <body class="empty">
 
 <div id="drop"><div>Thả file CSV vào đây</div></div>
+
+<div id="gate"><div class="box">
+  <h2>KIS Submission Checker</h2>
+  <p>Trang này cần mật khẩu chung của nhóm.</p>
+  <input type="password" id="pw" placeholder="Mật khẩu" autocomplete="current-password">
+  <div id="gateerr"></div>
+  <button class="btn primary" id="dologin">Vào</button>
+</div></div>
+
+<div class="teambar">
+  <span class="lbl" style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em">Nhóm</span>
+  <select id="subsel" title="Submission đang mở"><option value="">— chọn submission —</option></select>
+  <button class="btn" id="upload">⬆ Nộp CSV</button>
+  <input type="file" id="upfile" accept=".csv,text/csv" hidden>
+  <input type="text" id="whoami" placeholder="Tên của bạn">
+  <label class="ctl chk"><input type="checkbox" id="onlymine" checked> Chỉ phần của tôi</label>
+  <span id="syncst"></span>
+  <div class="spacer"></div>
+  <div class="prog"><span id="progtxt">—</span><span class="bar2"><i id="progbar"></i></span></div>
+  <div id="who"></div>
+  <button class="btn" id="dlmerged">⬇ File gộp</button>
+</div>
 
 <header>
   <div class="brand">KIS Submission Checker<small id="src">chưa nạp dữ liệu</small></div>
@@ -295,6 +351,14 @@ const DATA  = __PAYLOAD__;
 const MEDIA = DATA.media;
 const $ = s => document.querySelector(s);
 
+async function api(path, opts){
+  opts = opts || {};
+  opts.headers = Object.assign({}, opts.headers, authToken ? {'X-KIS-Auth': authToken} : {});
+  const r = await fetch(path, opts);
+  if(r.status === 401){ document.body.classList.add('locked'); throw new Error('cần mật khẩu'); }
+  return r;
+}
+
 let fps     = DATA.fps;
 let view    = 'top10';
 let cur     = -1;
@@ -312,6 +376,15 @@ let apiOn  = false;          // co server local de cham diem khong
 let maxFrames = 0;           // gioi han so frame moi request cua server (0 = khong gioi han)
 let canTranslate = false;    // server co dich duoc khong
 
+/* ---------- che do nhom ---------- */
+let authToken = localStorage.getItem('kis-token') || '';
+let teamOn    = false;      // server co ho tro dieu phoi nhom khong
+let teamSub   = '';         // submission dang mo
+let teamWho   = localStorage.getItem('kis-who') || '';
+let myVideos  = [];         // video duoc phan cong cho toi
+let onlyMine  = localStorage.getItem('kis-onlymine') !== '0';
+let syncTimer = null;
+
 let player = null, apiReady = false, loadedVid = null, queued = null;
 
 const secOf = e => e.frame / fps;
@@ -328,9 +401,11 @@ const byScore = () => entries.slice().sort((a,b) => {
   const px = x?.p ?? -1, py = y?.p ?? -1;
   return (py - px) || ((y?.cos ?? -1) - (x?.cos ?? -1)) || (a.rank - b.rank);
 });
-const rowsOf = () => view === 'top10' ? entries.slice(0,10)
-                  : view === 'byscore' ? byScore()
-                  : entries;
+const mineOnly = list => (onlyMine && myVideos.length)
+  ? list.filter(e => myVideos.includes(e.video)) : list;
+const rowsOf = () => view === 'top10' ? mineOnly(entries).slice(0,10)
+                  : view === 'byscore' ? mineOnly(byScore())
+                  : mineOnly(entries);
 
 /* ---------- nap CSV ---------- */
 function parseCSV(text){
@@ -553,10 +628,29 @@ function tally(){
   $('#ntotal').textContent = entries.length;
 }
 
+function markKey(i){ const e = entries[i]; return e.video + '|' + e.frame; }
+
+function syncMarks(){
+  if(!teamOn || !teamSub || !teamWho) return;
+  clearTimeout(syncTimer);
+  $('#syncst').textContent = 'đang lưu…';
+  syncTimer = setTimeout(async () => {
+    const payload = {};
+    Object.keys(marks).forEach(i => { payload[markKey(+i)] = marks[i]; });
+    try{
+      await api('/api/marks', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name: teamSub, who: teamWho, marks: payload})});
+      $('#syncst').textContent = 'đã lưu';
+      loadProgress();
+    }catch(e){ $('#syncst').textContent = 'lỗi lưu'; }
+  }, 800);          // gom nhieu lan bam lai, tranh spam server
+}
+
 function setMark(m){
   if(cur < 0) return;
   if(marks[cur] === m) delete marks[cur]; else marks[cur] = m;
   localStorage.setItem(key(), JSON.stringify(marks));
+  syncMarks();
   document.querySelectorAll('.mark').forEach(b => b.setAttribute('aria-pressed', marks[cur] === b.dataset.m));
   document.querySelectorAll('.row').forEach(r => {
     if(+r.dataset.i === cur) r.querySelector('.dot').className = 'dot' + (marks[cur] ? ' ' + marks[cur] : '');
@@ -729,7 +823,147 @@ if(DATA.initial){
   $('#fname').classList.add('set');
   loadRows(DATA.initial.rows.map(r => ({video:r[0], frame:r[1]})), DATA.initial.source);
 }
-fetch('/api/status').then(r => r.json()).then(j => {
+/* ---------- dang nhap ---------- */
+async function doLogin(){
+  const pw = $('#pw').value;
+  $('#gateerr').textContent = '';
+  try{
+    const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'},
+                                         body: JSON.stringify({password: pw})});
+    const j = await r.json();
+    if(!j.ok){ $('#gateerr').textContent = j.error || 'sai mật khẩu'; return; }
+    authToken = j.token || '';
+    localStorage.setItem('kis-token', authToken);
+    document.body.classList.remove('locked');
+    boot();
+  }catch(e){ $('#gateerr').textContent = 'không gọi được server'; }
+}
+$('#dologin').onclick = doLogin;
+$('#pw').onkeydown = ev => { if(ev.key === 'Enter') doLogin(); };
+
+/* ---------- dieu phoi nhom ---------- */
+async function loadSubs(){
+  try{
+    const j = await (await api('/api/submissions')).json();
+    const sel = $('#subsel');
+    sel.innerHTML = '<option value="">— chọn submission —</option>';
+    (j.items || []).forEach(m => {
+      const o = document.createElement('option');
+      o.value = m.name;
+      o.textContent = m.name + ' (' + m.rows + ' dòng · ' + m.videos.length + ' video)';
+      sel.appendChild(o);
+    });
+    if(teamSub) sel.value = teamSub;
+  }catch(e){}
+}
+
+async function openSub(name){
+  if(!name){ teamSub = ''; myVideos = []; return; }
+  const j = await (await api('/api/submission?name=' + encodeURIComponent(name)
+                             + '&who=' + encodeURIComponent(teamWho))).json();
+  if(!j.ok) return;
+  teamSub  = j.name;
+  myVideos = j.my_videos || [];
+  localStorage.setItem('kis-sub', teamSub);
+
+  loadRows(j.rows.map(r => ({video: r[0], frame: r[1]})), teamSub + '.csv');
+  // danh dau tren server la nguon dung; doi lai thanh chi so dong
+  const byKey = {};
+  entries.forEach((e, i) => { byKey[e.video + '|' + e.frame] = i; });
+  marks = {};
+  Object.entries(j.my_marks || {}).forEach(([k, v]) => {
+    if(byKey[k] !== undefined) marks[byKey[k]] = v;
+  });
+  localStorage.setItem(key(), JSON.stringify(marks));
+  render();
+  if(rowsOf().length) select(rowsOf()[0].rank - 1);
+  loadProgress();
+}
+
+async function loadProgress(){
+  if(!teamSub) return;
+  try{
+    const j = await (await api('/api/progress?name=' + encodeURIComponent(teamSub))).json();
+    if(!j.ok) return;
+    $('#progtxt').textContent = j.done + '/' + j.rows;
+    $('#progbar').style.width = (j.rows ? j.done / j.rows * 100 : 0) + '%';
+    const box = $('#who'); box.innerHTML = '';
+    Object.entries(j.per_person).forEach(([w, s]) => {
+      const el = document.createElement('span');
+      el.className = 'whochip' + (w === teamWho ? ' me' : '')
+                   + (s.total && s.done >= s.total ? ' full' : '');
+      el.textContent = w + ' ' + s.done + '/' + s.total;
+      el.title = s.videos + ' video · ✓' + s.ok + ' ✗' + s.no + ' ?' + s.maybe;
+      box.appendChild(el);
+    });
+  }catch(e){}
+}
+
+$('#subsel').onchange = () => openSub($('#subsel').value);
+$('#whoami').onchange = () => {
+  teamWho = $('#whoami').value.trim();
+  localStorage.setItem('kis-who', teamWho);
+  if(teamSub) openSub(teamSub);
+};
+$('#onlymine').onchange = () => {
+  onlyMine = $('#onlymine').checked;
+  localStorage.setItem('kis-onlymine', onlyMine ? '1' : '0');
+  render();
+  if(rowsOf().length) select(rowsOf()[0].rank - 1);
+};
+$('#upload').onclick = () => $('#upfile').click();
+$('#upfile').onchange = async ev => {
+  const f = ev.target.files[0];
+  if(!f) return;
+  const name = prompt('Đặt tên cho submission này:', f.name.replace(/\.csv$/i, ''));
+  if(name === null) return;
+  const people = prompt('Danh sách người kiểm tra, cách nhau bằng dấu phẩy:', teamWho || '');
+  if(people === null) return;
+  $('#syncst').textContent = 'đang nộp…';
+  try{
+    const r = await api('/api/upload?name=' + encodeURIComponent(name)
+                        + '&people=' + encodeURIComponent(people),
+                        {method:'POST', headers:{'Content-Type':'text/csv'}, body: f});
+    const j = await r.json();
+    if(!j.ok){ $('#syncst').textContent = 'lỗi: ' + j.error; return; }
+    $('#syncst').textContent = 'đã nộp';
+    const lines = Object.entries(j.stats || {})
+      .map(([p, st]) => p + ': ' + st.rows + ' dòng / ' + st.videos + ' video').join('\n');
+    alert('Đã nộp ' + j.meta.rows + ' dòng, chia cho ' + Object.keys(j.stats || {}).length
+          + ' người:\n\n' + lines);
+    await loadSubs();
+    $('#subsel').value = j.meta.name;
+    openSub(j.meta.name);
+  }catch(e){ $('#syncst').textContent = 'lỗi nộp'; }
+};
+$('#dlmerged').onclick = async () => {
+  if(!teamSub){ alert('Chưa chọn submission'); return; }
+  const r = await api('/api/export?name=' + encodeURIComponent(teamSub));
+  const blob = await r.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = teamSub + '-team-check.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+setInterval(() => { if(teamOn && teamSub) loadProgress(); }, 10000);
+
+/* ---------- khoi dong ---------- */
+function boot(){
+fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken}} : {}).then(r => r.json()).then(j => {
+  if(j.auth_required && !j.authed){ document.body.classList.add('locked'); return; }
+  document.body.classList.remove('locked');
+  teamOn = !!j.team;
+  if(teamOn){
+    document.body.classList.add('team');
+    $('#whoami').value = teamWho;
+    $('#onlymine').checked = onlyMine;
+    loadSubs().then(() => {
+      const last = localStorage.getItem('kis-sub');
+      if(last){ $('#subsel').value = last; if($('#subsel').value === last) openSub(last); }
+    });
+  }
   if(!j.ok) return;
   apiOn = true;
   document.body.classList.add('api');
@@ -743,6 +977,8 @@ fetch('/api/status').then(r => r.json()).then(j => {
   setQ((j.fetch ? 'tải video theo yêu cầu' : j.videos.length + ' video sẵn sàng')
        + (j.api ? ' · API: ' + j.api_model : ' · chưa cấu hình API'), '');
 }).catch(() => { apiOn = false; });   // ban tinh (GitHub Pages) -> an thanh query
+}
+boot();
 
 const s = document.createElement('script');
 s.src = 'https://www.youtube.com/iframe_api';
