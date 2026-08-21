@@ -51,6 +51,7 @@ function paintRounds(){
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = r.label;
     b.setAttribute('aria-pressed', r.id === ROUND);
+    if(r.id === ROUND) b.classList.add('now');
     b.onclick = async () => {
       if(r.id === ROUND) return;
       try{
@@ -68,7 +69,7 @@ function paintRounds(){
     const tr = document.createElement('tr');
     tr.innerHTML = '<td></td><td></td><td></td><td></td>';
     tr.children[0].innerHTML = r.label + (r.id === ROUND
-      ? ' <span class="tag me">đang mở</span>' : '');
+      ? ' <span class="tag now">đang mở</span>' : '');
     tr.children[1].textContent = r.queries;
     tr.children[2].textContent = r.assigned;
     tr.children[3].textContent = r.subs;

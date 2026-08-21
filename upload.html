@@ -7,7 +7,7 @@
   <div class="sub">Đưa file lên đây thay cho gửi qua chat — cả nhóm mở được ngay</div>
 
   <div class="card">
-    <div class="row"><b style="font-size:13px">Vòng:</b><span class="tag" id="rtag"></span></div>
+    <div class="row"><b style="font-size:13px">Vòng:</b><span class="tag now" id="rtag"></span></div>
     <h2 style="margin-top:4px">Cách 1 — nộp cả bộ bằng ZIP <span class="tag">nên dùng</span></h2>
     <div class="sub">Nén hết CSV vào một file .zip rồi thả vào đây. Hệ thống tự đọc tên
       file để gắn đúng câu hỏi (<code style="font-family:var(--mono)">query-p1-7-kis.csv</code>
@@ -63,7 +63,7 @@ async function refresh(){
     tr.children[0].textContent = m.name;
     const r = m.round || '';
     tr.children[1].innerHTML = r
-      ? '<span class="tag' + (r === ROUND ? ' me' : '') + '">' + (RLABEL[r] || r) + '</span>'
+      ? '<span class="tag' + (r === ROUND ? ' now' : '') + '">' + (RLABEL[r] || r) + '</span>'
       : '<span class="tag">— chưa rõ —</span>';
     tr.children[2].textContent = m.rows;
     tr.children[3].textContent = (m.videos || []).length;

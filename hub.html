@@ -26,7 +26,7 @@ const TILES = [
   const lbl = (rd.rounds.find(r => r.id === rd.round) || {}).label || rd.round;
   S('#hellosub').innerHTML = (me.role === 'admin'
     ? 'Bạn là admin — thấy đầy đủ các trang quản trị.'
-    : 'Bạn là thành viên.') + ' Vòng đang mở: <b>' + lbl + '</b>'
+    : 'Bạn là thành viên.') + ' Vòng đang mở: <b class="now">' + lbl + '</b>'
     + (me.role === 'admin' ? ' — đổi ở trang Thành viên &amp; phân việc.' : '');
   const box = S('#tiles');
   TILES.filter(t => !t.admin || me.role === 'admin').forEach(t => {

@@ -182,7 +182,11 @@ class Handler(SimpleHTTPRequestHandler):
                                                    "subs": subs.get(i, [])} for i in mine]})
 
             if path == "/api/submissions":
-                return self._json(200, {"ok": True, "items": team.list_submissions(store())})
+                items = team.list_submissions(store())
+                if q.get("round"):
+                    items = [m for m in items if (m.get("round") or "") == q["round"]]
+                return self._json(200, {"ok": True, "items": items,
+                                        "round": current_round_of()})
 
             if path == "/api/submission":
                 name = q.get("name", "")

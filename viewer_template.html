@@ -89,6 +89,9 @@
         background:var(--panel);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
   .whochip.me{border-color:var(--accent);color:var(--accent)}
   .whochip.full{border-color:var(--ok);color:var(--ok)}
+  .tag{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;
+       background:var(--panel);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .tag.now{border-color:var(--no);color:var(--no);background:#2a1214;font-weight:600}
   #syncst{font-size:11px;color:var(--faint);font-family:var(--mono);min-width:62px}
 
   /* ---------- thanh query ---------- */
@@ -223,6 +226,7 @@
 
 <div class="teambar">
   <span class="lbl" style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em">Nhóm</span>
+  <span class="tag now" id="rtag" style="display:none"></span>
   <select id="subsel" title="Submission đang mở"><option value="">— chọn submission —</option></select>
   <button class="btn" id="upload">⬆ Nộp CSV</button>
   <input type="file" id="upfile" accept=".csv,text/csv" hidden>
@@ -399,6 +403,7 @@ let teamWho   = localStorage.getItem('kis-who') || '';
 let myVideos  = [];         // video duoc phan cong cho toi
 let onlyMine  = localStorage.getItem('kis-onlymine') !== '0';
 let syncTimer = null;
+let teamRound = '';         // vong dang mo (toan cuc)
 
 let player = null, apiReady = false, loadedVid = null, queued = null;
 
@@ -899,7 +904,10 @@ $('#pw').onkeydown = ev => { if(ev.key === 'Enter') doLogin(); };
 /* ---------- dieu phoi nhom ---------- */
 async function loadSubs(){
   try{
-    const j = await (await api('/api/submissions')).json();
+    // Chi lay submission cua vong dang mo -- tron lan cac vong rat de mo nham
+    // file cua vong truoc.
+    const j = await (await api('/api/submissions?round='
+                     + encodeURIComponent(teamRound))).json();
     const sel = $('#subsel');
     sel.innerHTML = '<option value="">— chọn submission —</option>';
     (j.items || []).forEach(m => {
@@ -1016,6 +1024,9 @@ fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken,
   if(j.auth_required && !j.authed){ location.href = 'login.html'; return; }
   document.body.classList.remove('locked');
   teamOn = !!j.team;
+  // Phai gan TRUOC khoi if(teamOn) ben duoi, vi loadSubs() trong do can teamRound
+  // de loc submission theo vong.
+  teamRound = j.round || '';
   if(!teamOn || !j.auth_required){
     $('#tohub').classList.add('hidden');
     $('#dologout').classList.add('hidden');
@@ -1026,6 +1037,14 @@ fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken,
     $('#whoami').value = teamWho;
     $('#whoami').readOnly = !!localStorage.getItem('kis-user');
     $('#onlymine').checked = onlyMine;
+    if(teamRound){
+      api('/api/round').then(r => r.json()).then(rr => {
+        const lb = (rr.rounds || []).find(x => x.id === rr.round);
+        const t = $('#rtag');
+        t.textContent = lb ? lb.label : rr.round;
+        t.style.display = '';
+      }).catch(() => {});
+    }
     loadSubs().then(() => {
       const last = localStorage.getItem('kis-sub');
       if(last){ $('#subsel').value = last; if($('#subsel').value === last) openSub(last); }
