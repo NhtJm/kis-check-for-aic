@@ -12,12 +12,10 @@ Trich o cua so rong nhat ban dinh dung; cua so hep hon khi cham la tap con.
 import argparse, csv, os, sys, collections
 
 def read_submission(path):
-    rows = []
-    for r in csv.reader(open(path, newline="", encoding="utf-8-sig")):
-        if len(r) >= 2 and r[0].strip():
-            try: rows.append((r[0].strip(), int(float(r[1]))))
-            except ValueError: pass
-    return rows
+    """Dung chung parser voi score_query -- truoc day moi file mot ban, sua cho nay
+    quen cho kia va TRAKE bi mat moc E2/E3."""
+    import score_query
+    return [(r["video"], r["frame"]) for r in score_query.read_submission(path)]
 
 
 def main():

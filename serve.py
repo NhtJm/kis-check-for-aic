@@ -219,7 +219,9 @@ class Handler(SimpleHTTPRequestHandler):
                                  {"id": meta["query_id"], "kind": "kis",
                                   "text": "", "events": [], "missing": True})
                 return self._json(200, {"ok": True, "name": team.slug(name),
-                                        "rows": [[r["video"], r["frame"]] for r in rows],
+                                        # TRAKE: gui ca danh sach moc de UI hien du E1/E2/E3
+                                        "rows": [[r["video"], r["frame"],
+                                                  r.get("frames") or [r["frame"]]] for r in rows],
                                         "assign": plan, "my_videos": mine,
                                         "my_marks": marks,
                                         "meta": meta, "query": qinfo})

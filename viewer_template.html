@@ -337,8 +337,8 @@
       <button class="nudge" data-d="10">+10s</button>
       <button class="btn" id="play">▶ Phát</button>
       <button class="btn" id="recenter">⟲ Về đúng frame</button>
-      <span class="clock">hiện tại <b id="now">–:–</b></span>
-      <span class="drift" id="drift">Δ 0.0s</span>
+      <span class="clock">hiện tại <b id="now">–:–</b> · frame <b id="nowf">–</b></span>
+      <span class="drift" id="drift">Δ 0</span>
     </div>
 
     <div class="bar">
@@ -449,6 +449,7 @@ const mineOnly = list => (onlyMine && myVideos.length)
 const rowsOf = () => view === 'byscore' ? mineOnly(byScore()) : mineOnly(entries);
 
 /* ---------- nap CSV ---------- */
+// TRAKE co nhieu moc moi dong: video,f1,f2,f3 -> tach thanh tung moc E1/E2/E3
 function parseCSV(text){
   const out = [];
   text.split(/\r?\n/).forEach(line => {
@@ -456,9 +457,17 @@ function parseCSV(text){
     const c = line.split(',');
     if(c.length < 2) return;
     const v = c[0].trim().replace(/^["']|["']$/g,'');
-    const f = parseInt(c[1].trim(), 10);
-    if(!v || !Number.isFinite(f)) return;      // bo qua dong header
-    out.push({video:v, frame:f});
+    if(!v) return;
+    const fs = [];
+    for(let i = 1; i < c.length; i++){
+      const t = c[i].trim();
+      if(!t) continue;
+      const n = parseInt(t, 10);
+      if(!Number.isFinite(n)) return;          // dong header
+      fs.push(n);
+    }
+    fs.forEach((f, i) => out.push({video:v, frame:f,
+      ev: fs.length > 1 ? 'E' + (i+1) : '', grp: out.length && fs.length > 1 ? null : null}));
   });
   return out;
 }
@@ -466,7 +475,7 @@ function parseCSV(text){
 function loadRows(rows, name){
   if(!rows.length){ alert('Không đọc được dòng nào hợp lệ trong file này.'); return; }
   source  = name;
-  entries = rows.map((r,i) => ({rank:i+1, video:r.video, frame:r.frame}));
+  entries = rows.map((r,i) => ({rank:i+1, video:r.video, frame:r.frame, ev:r.ev || ''}));
 
   const freq = {}, best = {};
   entries.forEach(e => {
@@ -606,7 +615,8 @@ function rowEl(e, i){
   const bad = !MEDIA[e.video] ? ' <span class="warn">⚠ thiếu media-info</span>'
             : broken[e.video]  ? ' <span class="warn">⚠ không xem được</span>' : '';
   el.querySelector('.rsub').innerHTML =
-    'frame ' + e.frame + ' → <span class="t">' + mmss(secOf(e)) + '</span>' + bad;
+    (e.ev ? '<span class="tag" style="padding:0 4px;margin-right:5px">' + e.ev + '</span>' : '')
+    + 'frame ' + e.frame + ' → <span class="t">' + mmss(secOf(e)) + '</span>' + bad;
   if(marks[i]) el.querySelector('.dot').classList.add(marks[i]);
   const sc = scores[i];
   if(sc && sc.p != null){
@@ -630,7 +640,7 @@ function select(i){
   const e = entries[i], v = MEDIA[e.video], t = secOf(e);
   $('#p-rank').textContent  = 'hạng #' + e.rank;
   $('#p-vid').textContent   = e.video;
-  $('#p-frame').textContent = 'frame ' + e.frame;
+  $('#p-frame').textContent = (e.ev ? e.ev + ' · ' : '') + 'frame ' + e.frame;
   $('#p-time').textContent  = mmss(t) + ' (' + t.toFixed(2) + 's)';
   $('#p-bad').style.display = broken[e.video] ? '' : 'none';
   const sc = scores[i];
@@ -867,7 +877,21 @@ $('#query').onkeydown = ev => {
 
 $('#exportsub').onclick = () => {
   const ranked = byScore();
-  const lines = ranked.map(e => e.video + ',' + e.frame);
+  // TRAKE: gop cac moc cua cung mot dong ve lai mot hang video,f1,f2,f3
+  const hasEv = entries.some(e => e.ev);
+  let lines;
+  if(hasEv){
+    const seen = new Set(), groups = [];
+    ranked.forEach(e => {
+      if(seen.has(e.video)) return;
+      seen.add(e.video);
+      groups.push(e.video + ',' + entries.filter(x => x.video === e.video)
+        .sort((a,b) => a.frame - b.frame).map(x => x.frame).join(','));
+    });
+    lines = groups;
+  }else{
+    lines = ranked.map(e => e.video + ',' + e.frame);
+  }
   const n = ranked.filter(e => (scores[e.rank-1]?.p ?? null) != null).length;
   const blob = new Blob([lines.join('\n') + '\n'], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');
@@ -900,9 +924,14 @@ setInterval(() => {
   $('#play').textContent = player.getPlayerState() === 1 ? '❚❚ Dừng' : '▶ Phát';
   const now = player.getCurrentTime(), target = secOf(entries[cur]);
   $('#now').textContent = mmss(now);
+  // Frame moi la don vi that su can khi soi -- giay chi de doc cho de.
+  const nowFrame = Math.round(now * fps);
+  $('#nowf').textContent = nowFrame;
+  const df = nowFrame - entries[cur].frame;
   const d = now - target, el = $('#drift');
-  el.textContent = 'Δ ' + (d >= 0 ? '+' : '') + d.toFixed(1) + 's';
-  el.className = 'drift ' + (Math.abs(d) <= 2 ? 'good' : 'warn');
+  el.textContent = 'Δ ' + (df >= 0 ? '+' : '') + df + ' frame ('
+                 + (d >= 0 ? '+' : '') + d.toFixed(1) + 's)';
+  el.className = 'drift ' + (Math.abs(df) <= 2 ? 'good' : Math.abs(d) <= 2 ? '' : 'warn');
 }, 250);
 
 /* ---------- boot ---------- */
@@ -960,7 +989,13 @@ async function openSub(name){
   showTask(j.query);
   localStorage.setItem('kis-sub', teamSub);
 
-  loadRows(j.rows.map(r => ({video: r[0], frame: r[1]})), teamSub + '.csv');
+  const flat = [];
+  (j.rows || []).forEach(r => {
+    const fs = r[2] && r[2].length ? r[2] : [r[1]];
+    fs.forEach((f, i) => flat.push({video: r[0], frame: f,
+                                    ev: fs.length > 1 ? 'E' + (i+1) : ''}));
+  });
+  loadRows(flat, teamSub + '.csv');
   // danh dau tren server la nguon dung; doi lai thanh chi so dong
   const byKey = {};
   entries.forEach((e, i) => { byKey[e.video + '|' + e.frame] = i; });

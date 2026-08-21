@@ -73,15 +73,25 @@ def score_images(images, queries, model_id=MODEL_ID, agg="mean_emb"):
 
 # ---------- pipeline ----------
 def read_submission(path):
+    """TRAKE co nhieu moc moi dong (video,f1,f2,f3) -- tach thanh tung moc rieng
+    de cham diem, kem nhan E1/E2/E3."""
     rows = []
     with open(path, newline="", encoding="utf-8-sig") as f:
         for r in csv.reader(f):
             if len(r) < 2 or not r[0].strip():
                 continue
-            try:
-                rows.append({"video": r[0].strip(), "frame": int(float(r[1]))})
-            except ValueError:
-                continue          # dong header
+            fs = []
+            for cell in r[1:]:
+                cell = cell.strip()
+                if not cell:
+                    continue
+                try:
+                    fs.append(int(float(cell)))
+                except ValueError:
+                    fs = []; break          # dong header
+            for i, fr in enumerate(fs):
+                rows.append({"video": r[0].strip(), "frame": fr,
+                             "ev": f"E{i+1}" if len(fs) > 1 else ""})
     return rows
 
 

@@ -85,14 +85,29 @@ def make_store(bucket=None, local_root=None):
 
 # ---------- doc CSV ----------
 def parse_csv(data):
+    """Doc CSV submission.
+
+    KIS/QA:  video,frame              -> mot moc
+    TRAKE:   video,f1,f2,f3[,...]     -> nhieu moc (E1, E2, E3...)
+
+    Moi dong giu ca danh sach `frames`; `frame` la moc dau, de code cu van chay.
+    """
     rows = []
     text = data.decode("utf-8-sig", errors="replace") if isinstance(data, bytes) else data
     for r in csv.reader(io.StringIO(text)):
-        if len(r) >= 2 and r[0].strip():
+        if len(r) < 2 or not r[0].strip():
+            continue
+        fs = []
+        for cell in r[1:]:
+            cell = cell.strip()
+            if not cell:
+                continue
             try:
-                rows.append({"video": r[0].strip(), "frame": int(float(r[1]))})
+                fs.append(int(float(cell)))
             except ValueError:
-                continue                      # dong header
+                fs = []; break                # dong header
+        if fs:
+            rows.append({"video": r[0].strip(), "frame": fs[0], "frames": fs})
     return rows
 
 
