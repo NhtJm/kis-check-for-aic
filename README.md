@@ -489,3 +489,23 @@ Cần `KIS_PASSWORD` khi dùng `--from-server`.
 **Chỉ chấm điểm mới cần bước này.** Xem video và tua theo frame chạy được với mọi
 video trong dataset, không phụ thuộc bucket — player phát thẳng từ YouTube trong
 trình duyệt, server không đụng vào.
+
+## TRAKE: chấm từng mốc theo đúng sự kiện của nó
+
+CSV của TRAKE có nhiều mốc mỗi dòng (`video,f1,f2,f3`). Chấm cả ba mốc bằng chung
+một đoạn mô tả là sai hình — E2 không bao giờ "giống" mô tả của E1.
+
+`score_query.run()` nhận `query` là dict `{"E1": "...", "E2": "..."}` thì mỗi mốc
+được chấm theo đúng sự kiện của nó.
+
+Đo trên `query-p1-16-trake` (99 dòng × 3 mốc, 267/300 chấm được):
+
+| Sự kiện | Cao nhất | Nhận xét |
+|---|---|---|
+| E1 — hai con rồng vàng xoay vòng | 57.4% | đúng, top 3 đều là rồng vàng |
+| E2 — lân hoàn tất cú xoay trên trụ | 0.9% | **model không nhận ra** |
+| E3 — dùi chạm kẻng đồng | 99.4% | đúng chính xác |
+
+E2 gần 0 dù frame thật sự có lân trên trụ. Lý do: SigLIP nhận **vật thể trong
+khung hình** (rồng, kẻng, dùi), không nhận **thời điểm một động tác hoàn tất**.
+Những mốc kiểu đó phải để người xem — đừng tin điểm thấp là sai.

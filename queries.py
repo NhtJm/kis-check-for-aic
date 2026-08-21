@@ -22,7 +22,9 @@ JUNK = re.compile(
     r"Thanh niên, sinh viên.*)\s*$", re.I)
 
 MARKER = re.compile(r"^\s*C[âa]u\s+[`'\"]?(query-[A-Za-z0-9_-]+)[`'\"]?\s*$", re.M)
-EVENT  = re.compile(r"^\s*(E\d+)\s*[:.]\s*(.+)$", re.M)
+# Dau phan cach sau E1 co the la ":", "." hoac chi mot khoang trang --
+# de thi viet ca hai kieu.
+EVENT  = re.compile(r"^\s*(E\d+)\s*[:.\-]?\s+(.+)$", re.M)
 CUT    = re.compile(r"^\s*Tệp đính kèm\s*$", re.M)
 
 

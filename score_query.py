@@ -138,7 +138,15 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
     flat = [(v, i, frames[v][i]) for v in frames for i in sorted(frames[v])]
     log(f"Cham diem {len(flat)} frame · backend={backend} · query={query!r}")
 
-    queries = [query] if isinstance(query, str) else list(query)
+    # TRAKE: query co the la dict {"E1": "...", "E2": "..."} -- moi moc cham theo
+    # dung su kien cua no. Cham ca 3 moc bang chung mot doan mo ta la sai hinh:
+    # E2 khong bao gio "giong" mo ta cua E1.
+    per_event = isinstance(query, dict)
+    if per_event:
+        ev_text = dict(query)
+        queries = [next(iter(query.values()))]
+    else:
+        queries = [query] if isinstance(query, str) else list(query)
     if translate:
         # Dich sang tieng Anh truoc khi cham: do thuc te cho thay query tieng Anh
         # tach diem tot hon han tieng Viet (29.77/23.44/0.17 so voi 99.9/100/99.7).
@@ -149,6 +157,24 @@ def run(rows, query, window=90, step=30, video_dir=VIDEO_DIR, model_id=MODEL_ID,
         probs, _ = api_backend.score_images([f[2] for f in flat], queries[0], log=log,
                                             provider=provider)
         cosines, kind = [None] * len(flat), "absolute"
+    elif per_event:
+        # Gan moi frame vao su kien cua moc sinh ra no, roi cham theo tung nhom
+        owner = {}
+        for r in rows:
+            ev = r.get("ev") or ""
+            for o in offsets:
+                owner.setdefault((r["video"], r["frame"] + o), ev)
+        import collections as _c
+        groups = _c.defaultdict(list)
+        for i, (v, idx, _) in enumerate(flat):
+            groups[owner.get((v, idx), "")].append(i)
+        probs = [0.0] * len(flat); cosines = [0.0] * len(flat); kind = "absolute"
+        for ev, idxs in groups.items():
+            txt = ev_text.get(ev) or ev_text.get("") or next(iter(ev_text.values()))
+            log(f"  {ev or '(chung)'}: {len(idxs)} frame · {txt[:60]}")
+            p_, c_, kind = score_images([flat[i][2] for i in idxs], [txt], model_id, agg)
+            for k, i in enumerate(idxs):
+                probs[i], cosines[i] = p_[k], c_[k]
     else:
         probs, cosines, kind = score_images([f[2] for f in flat], queries, model_id, agg)
 
