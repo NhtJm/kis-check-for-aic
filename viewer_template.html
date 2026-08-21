@@ -818,7 +818,9 @@ async function runScoring(){
   setQ('đang chấm ~' + nf + ' frame, chờ chút…', 'run');
   const t0 = Date.now();
   try{
-    const r = await fetch('/api/score', {
+    // Phai dung api() chu khong phai fetch() -- api() moi gan X-KIS-Auth/X-KIS-User,
+    // thieu la server tra 401 "can mat khau".
+    const r = await api('/api/score', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({query:q, window:win, step:stp,
                             backend: $('#backend').value, topk: 20,
