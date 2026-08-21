@@ -1035,6 +1035,8 @@ fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken,
   apiOn = true;
   document.body.classList.add('api');
   maxFrames = j.max_frames || 0;
+  // Nop CSV la viec cua admin -- an nut voi thanh vien (server cung da chan).
+  if(j.auth_required && !j.is_admin) $('#upload').classList.add('hidden');
   canTranslate = !!j.translate;
   $('#trwrap').style.display = canTranslate ? '' : 'none';
   const allowed = j.backends || (j.api ? ['siglip','hybrid','api'] : ['siglip']);

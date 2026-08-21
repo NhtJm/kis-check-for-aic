@@ -8,6 +8,19 @@
 
   <div class="card">
     <div class="row"><b style="font-size:13px">Vòng:</b><span class="tag" id="rtag"></span></div>
+    <h2 style="margin-top:4px">Cách 1 — nộp cả bộ bằng ZIP <span class="tag">nên dùng</span></h2>
+    <div class="sub">Nén hết CSV vào một file .zip rồi thả vào đây. Hệ thống tự đọc tên
+      file để gắn đúng câu hỏi (<code style="font-family:var(--mono)">query-p1-7-kis.csv</code>
+      → câu <code style="font-family:var(--mono)">query-p1-7-kis</code>).
+      Nộp trước hay sau khi nạp bộ câu hỏi đều được.</div>
+    <label class="fld"><span>File ZIP</span><input type="file" id="zip" accept=".zip"></label>
+    <label class="fld"><span>Chia cho ai (áp cho mọi CSV trong ZIP, để trống thì chưa chia)</span>
+      <input type="text" id="zpeople" placeholder="thanh, nhan, tung"></label>
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="zgo">Nộp cả bộ</button></div>
+    <div class="msg" id="zmsg"></div>
+    <div id="zrep"></div>
+
+    <h2 style="margin-top:24px">Cách 2 — nộp lẻ từng file</h2>
     <label class="fld"><span>Gắn vào câu hỏi (tuỳ chọn)</span>
       <select id="qid"><option value="">— không gắn —</option></select></label>
     <label class="fld"><span>Tên submission</span>
@@ -46,6 +59,63 @@ async function refresh(){
     tb.appendChild(tr);
   });
 }
+function reportZip(j){
+  const box = S('#zrep'); box.innerHTML = '';
+  const mk = (title, rows, cls) => {
+    if(!rows.length) return;
+    const h = document.createElement('h2'); h.textContent = title; h.style.fontSize = '13px';
+    box.appendChild(h);
+    const t = document.createElement('table');
+    t.innerHTML = '<tbody></tbody>';
+    const tb = t.querySelector('tbody');
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td class="mono"></td><td class="mono"></td><td></td>';
+      tr.children[0].textContent = r.file || r;
+      tr.children[1].textContent = r.query_id || '';
+      tr.children[2].innerHTML = r.rows != null
+        ? r.rows + ' dòng' + (r.known === false
+            ? ' <span class="tag qa">câu chưa nạp — sẽ tự nối khi nạp đề</span>' : '')
+        : '';
+      tb.appendChild(tr);
+    });
+    box.appendChild(t);
+  };
+  mk('Đã gắn đúng câu (' + j.matched.length + ')', j.matched);
+  mk('Không đoán được câu (' + j.unmatched.length + ') — gắn tay ở trang Nạp bộ câu hỏi', j.unmatched);
+  mk('Lỗi đọc file (' + j.failed.length + ')', j.failed);
+  if(j.missing_queries.length){
+    const h = document.createElement('h2');
+    h.style.fontSize = '13px';
+    h.textContent = 'Câu hỏi chưa có CSV (' + j.missing_queries.length + ')';
+    box.appendChild(h);
+    const p = document.createElement('div');
+    p.className = 'sub'; p.style.fontFamily = 'var(--mono)';
+    p.textContent = j.missing_queries.join(', ');
+    box.appendChild(p);
+  }
+}
+
+S('#zgo').onclick = async () => {
+  const f = S('#zip').files[0];
+  if(!f){ say('#zmsg', 'chọn file ZIP đã', 'err'); return; }
+  S('#zgo').disabled = true;
+  say('#zmsg', 'đang giải nén và gắn câu hỏi…', '');
+  try{
+    const u = '/api/upload_zip?round=' + encodeURIComponent(ROUND)
+            + '&people=' + encodeURIComponent(S('#zpeople').value);
+    const j = await (await api(u, {method:'POST', headers:{'Content-Type':'application/zip'}, body:f})).json();
+    if(!j.ok){ say('#zmsg', j.error, 'err'); }
+    else{
+      say('#zmsg', j.matched.length + ' file gắn đúng câu · '
+        + j.unmatched.length + ' không đoán được · '
+        + j.missing_queries.length + ' câu chưa có CSV', 'ok');
+      reportZip(j); await refresh();
+    }
+  }catch(e){ say('#zmsg', e.message, 'err'); }
+  S('#zgo').disabled = false;
+};
+
 S('#go').onclick = async () => {
   const f = S('#file').files[0];
   if(!f){ say('#msg', 'chọn file CSV đã', 'err'); return; }
@@ -68,7 +138,7 @@ S('#go').onclick = async () => {
   S('#go').disabled = false;
 };
 (async () => {
-  if(!await guard(false)) return;
+  if(!await guard(true)) return;
   const r = await jget('/api/round');
   ROUND = r.round;
   S('#rtag').textContent = (r.rounds.find(x => x.id === ROUND) || {}).label || ROUND;

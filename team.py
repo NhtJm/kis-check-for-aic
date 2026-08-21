@@ -419,3 +419,77 @@ def round_status(store):
                     "assigned": sum(len(v) for v in plan.values()),
                     "subs": len(subs.get(r["id"], []))})
     return out
+
+
+# ---------- nhan ZIP nhieu CSV ----------
+# Ten file submission cua AIC thuong trung ma cau hoi: query-p1-7-kis.csv
+QID_RE = re.compile(r"(query[-_][A-Za-z0-9]+[-_]\d+[-_](?:kis|qa|trake))", re.I)
+NUMKIND_RE = re.compile(r"(\d+)[-_]?(kis|qa|trake)", re.I)
+
+
+def match_query(filename, known_ids):
+    """Doan xem mot file CSV thuoc cau hoi nao, dua vao TEN FILE.
+
+    Tra ve (query_id, cach_khop). query_id co the la cau chua duoc nap -- van luu,
+    de khi nap bo cau hoi sau thi tu noi vao (khong phu thuoc thu tu ai lam truoc).
+    """
+    base = os.path.basename(filename)
+    lower = {k.lower(): k for k in known_ids}
+
+    m = QID_RE.search(base)
+    if m:
+        cand = m.group(1).replace("_", "-").lower()
+        return lower.get(cand, cand), ("ten-file" if cand in lower else "ten-file-chua-co-cau")
+
+    # Khong co ma day du -> thu ghep theo so + loai, vd "7_kis.csv" hoac "kis-7.csv"
+    m = NUMKIND_RE.search(base)
+    if m:
+        num, kind = m.group(1), m.group(2).lower()
+        for k in known_ids:
+            km = re.search(r"[-_](\d+)[-_](kis|qa|trake)$", k, re.I)
+            if km and km.group(1) == num and km.group(2).lower() == kind:
+                return k, "so+loai"
+    return None, "khong-doan-duoc"
+
+
+def ingest_zip(store, data, round_name=None, people=None, log=lambda m: None):
+    """Giai nen ZIP, luu tung CSV thanh mot submission va gan vao cau hoi tuong ung."""
+    import io as _io, zipfile
+    round_name = round_name or ROUND_IDS[0]
+    known = [q["id"] for q in load_queries(store, round_name)]
+
+    try:
+        zf = zipfile.ZipFile(_io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise ValueError("file khong phai ZIP hop le")
+
+    matched, unmatched, failed = [], [], []
+    for info in zf.infolist():
+        name = info.filename
+        if info.is_dir() or not name.lower().endswith(".csv"):
+            continue
+        if "__MACOSX" in name or os.path.basename(name).startswith("."):
+            continue          # rac macOS tao ra khi nen
+        raw = zf.read(info)
+        qid, how = match_query(name, known)
+        sub = slug(os.path.splitext(os.path.basename(name))[0], "submission")
+        try:
+            meta = save_submission(store, sub, raw, people or None)
+        except ValueError as e:
+            failed.append({"file": name, "error": str(e)}); continue
+        if qid:
+            link_submission(store, qid, meta["name"], round_name)
+            rec = {"file": name, "sub": meta["name"], "query_id": qid,
+                   "rows": meta["rows"], "how": how,
+                   "known": qid in known}
+            matched.append(rec)
+            log(f"  {os.path.basename(name)} -> {qid} ({meta['rows']} dong, {how})")
+        else:
+            unmatched.append({"file": name, "sub": meta["name"], "rows": meta["rows"]})
+            log(f"  {os.path.basename(name)} -> KHONG doan duoc cau hoi")
+
+    have = {r["query_id"] for r in matched}
+    missing = [q for q in known if q not in have]
+    return {"matched": matched, "unmatched": unmatched, "failed": failed,
+            "missing_queries": missing, "round": round_name,
+            "queries_loaded": len(known)}

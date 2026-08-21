@@ -32,6 +32,7 @@ MAXFRAMES = int(os.environ.get("KIS_MAX_FRAMES", "0"))
 PASSWORD = os.environ.get("KIS_PASSWORD", "")
 BUCKET   = os.environ.get("KIS_BUCKET", "")
 MAX_UPLOAD = 8 * 1024 * 1024      # CSV submission khong bao gio lon the nay
+MAX_ZIP    = 64 * 1024 * 1024     # ca bo CSV nen lai
 
 def current_round_of():
     return team.current_round(store())
@@ -243,7 +244,13 @@ class Handler(SimpleHTTPRequestHandler):
 
         try:
             if path == "/api/upload":
+                if not self._admin():
+                    return self._need_admin()
                 return self._upload(q)
+            if path == "/api/upload_zip":
+                if not self._admin():
+                    return self._need_admin()
+                return self._upload_zip(q)
             if path == "/api/marks":
                 return self._marks()
             if path == "/api/assign":
@@ -354,6 +361,21 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError as e:
             return self._json(400, {"ok": False, "error": str(e)})
         return self._json(200, {"ok": True, "meta": m})
+
+    def _upload_zip(self, q):
+        data = self._body(MAX_ZIP)
+        if data is None:
+            return self._json(413, {"ok": False, "error": "file ZIP qua lon (toi da 64MB)"})
+        people = [p for p in (q.get("people") or "").split(",") if p.strip()]
+        try:
+            rep = team.ingest_zip(store(), data, q.get("round") or current_round_of(),
+                                  people or None,
+                                  log=lambda m: sys.stderr.write(m + "\n"))
+        except ValueError as e:
+            return self._json(400, {"ok": False, "error": str(e)})
+        sys.stderr.write(f"\n[zip] {len(rep['matched'])} khop · {len(rep['unmatched'])} khong doan duoc"
+                         f" · {len(rep['missing_queries'])} cau chua co CSV\n")
+        return self._json(200, {"ok": True, **rep})
 
     def _assign(self):
         req = json.loads(self._body(65536) or b"{}")
