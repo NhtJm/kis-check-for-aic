@@ -10,6 +10,7 @@
     --bg:#0d0f13; --panel:#14171d; --panel2:#191d25; --line:#252b35;
     --fg:#e7eaf0; --dim:#8e97a6; --faint:#5d6675;
     --accent:#4c9dff; --ok:#34d399; --no:#f87171; --maybe:#fbbf24;
+    --listw:392px;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   }
   html,body{height:100%}
@@ -94,7 +95,7 @@
   .qbar{display:none;align-items:center;gap:9px;padding:9px 14px;background:var(--panel2);
         border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
   body.api .qbar{display:flex}
-  .qbar input[type=text]{flex:1;min-width:230px;background:var(--panel);border:1px solid var(--line);
+  .qbar input[type=text]{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);
         color:var(--fg);border-radius:7px;padding:7px 11px;font-size:13px;font-family:inherit}
   .qbar input[type=text]:focus{outline:0;border-color:var(--accent)}
   .qbar input[type=number]{width:56px;background:var(--panel);border:1px solid var(--line);color:var(--fg);
@@ -114,16 +115,23 @@
   .offnote{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
 
   /* ---------- layout ---------- */
-  main{flex:1;display:grid;grid-template-columns:392px 1fr;min-height:0}
-  #list{border-right:1px solid var(--line);overflow-y:auto;background:var(--panel)}
-  #stage{display:flex;flex-direction:column;min-width:0;overflow-y:auto}
+  main{flex:1;display:grid;grid-template-columns:var(--listw) 5px 1fr;min-height:0}
+  #list{overflow-y:auto;background:var(--panel);min-width:0}
+  #split{background:var(--line);cursor:col-resize;position:relative;touch-action:none}
+  #split::before{content:'';position:absolute;inset:0 -5px}   /* vung bam rong hon net ve */
+  #split:hover,#split.on{background:var(--accent)}
+  #right{display:flex;flex-direction:column;min-width:0;min-height:0}
+  #stage{flex:1;display:flex;flex-direction:column;min-width:0;overflow-y:auto}
+  body.resizing{cursor:col-resize;user-select:none}
+  body.resizing #player{pointer-events:none}   /* iframe khong cuop chuot khi dang keo */
   body.empty main{grid-template-columns:1fr}
-  body.empty #list,body.empty #stage{display:none}
+  /* an #stage chu khong an #right, neu khong thanh query bien mat luc chua nap CSV */
+  body.empty #list,body.empty #split,body.empty #stage{display:none}
 
   /* ---------- empty state ---------- */
   #empty{display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
          padding:40px;text-align:center}
-  body.empty #empty{display:flex}
+  body.empty #empty{display:flex;flex:1;min-height:0}
   #empty h2{font-size:19px;font-weight:650}
   #empty p{color:var(--dim);font-size:13px;max-width:440px;line-height:1.7}
   #empty code{font-family:var(--mono);background:var(--panel2);border:1px solid var(--line);
@@ -192,9 +200,10 @@
       border-radius:4px;padding:1px 5px;font-size:11px;color:var(--dim)}
 
   @media (max-width:900px){
-    main{grid-template-columns:1fr;grid-template-rows:1fr auto}
-    #list{border-right:0;border-top:1px solid var(--line);max-height:36vh;order:2}
-    #stage{order:1}
+    main{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    #split{display:none}
+    #list{border-top:1px solid var(--line);max-height:36vh;order:2}
+    #right{order:1;min-height:0}
     .fname{max-width:110px}
   }
 </style>
@@ -238,8 +247,7 @@
 
   <div class="sep"></div>
   <div class="tabs" role="tablist">
-    <button role="tab" data-view="top10" aria-selected="true">Top 10</button>
-    <button role="tab" data-view="all" aria-selected="false">Tất cả</button>
+    <button role="tab" data-view="all" aria-selected="true">Tất cả</button>
     <button role="tab" data-view="byvideo" aria-selected="false">Theo video</button>
     <button role="tab" data-view="byscore" aria-selected="false" id="tabscore" style="display:none">Theo điểm</button>
   </div>
@@ -259,26 +267,30 @@
   <button class="btn" id="reset">Xoá đánh dấu</button>
 </header>
 
-<div class="qbar">
-  <span class="lbl" style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em">Query</span>
-  <input type="text" id="query" placeholder="Mô tả cảnh cần tìm — vd: bốn phi hành gia mặc áo đen đứng trước tàu vũ trụ">
-  <label class="ctl">± <input type="number" id="win" value="90" min="0" step="30"> frame</label>
-  <label class="ctl">bước <input type="number" id="stp" value="30" min="1" step="10"></label>
-  <label class="ctl chk" id="trwrap" style="display:none"
-         title="Dịch query sang tiếng Anh trước khi chấm. Chỉ tốn 1 lệnh gọi API cho cả lượt.">
-    <input type="checkbox" id="translate" checked> Dịch sang tiếng Anh</label>
-  <select id="backend" title="Chọn nơi chấm điểm">
-    <option value="siglip">SigLIP (local, miễn phí)</option>
-    <option value="hybrid" disabled>SigLIP lọc → VLM rerank top 20 (nhanh, rẻ)</option>
-    <option value="api" disabled>VLM chấm hết (chậm &amp; tốn)</option>
-  </select>
-  <button class="btn primary" id="run">Chấm điểm</button>
-  <span id="qstatus"></span>
-  <div id="qen" style="display:none;flex-basis:100%;font-size:12px;color:var(--dim);
-       font-family:var(--mono);padding-left:2px"></div>
-</div>
-
 <main>
+  <div id="list"></div>
+  <div id="split" role="separator" aria-orientation="vertical"
+       title="Kéo để đổi độ rộng · bấm đúp để về mặc định"></div>
+
+  <div id="right">
+  <div class="qbar">
+    <span class="lbl" style="font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em">Query</span>
+    <input type="text" id="query" placeholder="Mô tả cảnh cần tìm — vd: bốn phi hành gia mặc áo đen đứng trước tàu vũ trụ">
+    <label class="ctl">± <input type="number" id="win" value="90" min="0" step="30"> frame</label>
+    <label class="ctl">bước <input type="number" id="stp" value="30" min="1" step="10"></label>
+    <label class="ctl chk" id="trwrap" style="display:none"
+           title="Dịch query sang tiếng Anh trước khi chấm. Chỉ tốn 1 lệnh gọi API cho cả lượt.">
+      <input type="checkbox" id="translate" checked> Dịch sang tiếng Anh</label>
+    <select id="backend" title="Chọn nơi chấm điểm">
+      <option value="siglip">SigLIP (local, miễn phí)</option>
+      <option value="hybrid" disabled>SigLIP lọc → VLM rerank top 20 (nhanh, rẻ)</option>
+      <option value="api" disabled>VLM chấm hết (chậm &amp; tốn)</option>
+    </select>
+    <button class="btn primary" id="run">Chấm điểm</button>
+    <span id="qstatus"></span>
+    <div id="qen" style="display:none;flex-basis:100%;font-size:12px;color:var(--dim);
+         font-family:var(--mono);padding-left:2px"></div>
+  </div>
   <div id="empty">
     <div class="zone" id="zone">
       <div style="font-size:34px">📄</div>
@@ -288,8 +300,6 @@
     <p>Định dạng mỗi dòng: <code>L21_V015,25725</code> — mã video và số frame.
        Frame được đổi ra thời gian theo fps ở thanh trên (mặc định 30).</p>
   </div>
-
-  <div id="list"></div>
 
   <div id="stage">
     <div class="pwrap">
@@ -344,6 +354,7 @@
       <kbd>←</kbd><kbd>→</kbd> tua 3s · <kbd>r</kbd> về đúng frame · <kbd>space</kbd> phát/dừng
     </div>
   </div>
+  </div>
 </main>
 
 <script>
@@ -360,7 +371,7 @@ async function api(path, opts){
 }
 
 let fps     = DATA.fps;
-let view    = 'top10';
+let view    = 'all';
 let cur     = -1;
 let source  = null;          // ten file dang mo
 let entries = [];            // [{rank, video, frame}]
@@ -403,9 +414,7 @@ const byScore = () => entries.slice().sort((a,b) => {
 });
 const mineOnly = list => (onlyMine && myVideos.length)
   ? list.filter(e => myVideos.includes(e.video)) : list;
-const rowsOf = () => view === 'top10' ? mineOnly(entries).slice(0,10)
-                  : view === 'byscore' ? mineOnly(byScore())
-                  : mineOnly(entries);
+const rowsOf = () => view === 'byscore' ? mineOnly(byScore()) : mineOnly(entries);
 
 /* ---------- nap CSV ---------- */
 function parseCSV(text){
@@ -440,7 +449,7 @@ function loadRows(rows, name){
   scores = {}; maxP = 0;
   $('#tabscore').style.display = 'none';
   $('#exportsub').style.display = 'none';
-  if(view === 'byscore'){ view = 'top10'; syncTabs(); }
+  if(view === 'byscore'){ view = 'all'; syncTabs(); }
   const miss = order.filter(v => !MEDIA[v]);
 
   document.body.classList.remove('empty');
@@ -663,6 +672,48 @@ function step(d){
   const at = rows.indexOf(cur);
   select(rows[at < 0 ? 0 : Math.min(rows.length-1, Math.max(0, at + d))]);
 }
+
+/* ---------- keo chia do rong hai cot ---------- */
+(function(){
+  const sp = $('#split'), root = document.documentElement;
+  const MIN_L = 240, MIN_R = 340, DEF = 392;
+  const setW = w => root.style.setProperty('--listw', w + 'px');
+  const clamp = w => Math.max(MIN_L, Math.min(w, window.innerWidth - MIN_R));
+
+  const saved = parseInt(localStorage.getItem('kis-listw'), 10);
+  if(Number.isFinite(saved)) setW(clamp(saved));
+
+  let dragging = false;
+  sp.addEventListener('pointerdown', e => {
+    dragging = true;
+    sp.setPointerCapture(e.pointerId);
+    sp.classList.add('on');
+    document.body.classList.add('resizing');
+    e.preventDefault();
+  });
+  sp.addEventListener('pointermove', e => {
+    if(!dragging) return;
+    const w = clamp(e.clientX - $('main').getBoundingClientRect().left);
+    setW(w);
+    localStorage.setItem('kis-listw', w);
+  });
+  const stop = e => {
+    if(!dragging) return;
+    dragging = false;
+    if(sp.hasPointerCapture(e.pointerId)) sp.releasePointerCapture(e.pointerId);
+    sp.classList.remove('on');
+    document.body.classList.remove('resizing');
+  };
+  sp.addEventListener('pointerup', stop);
+  sp.addEventListener('pointercancel', stop);
+  sp.addEventListener('dblclick', () => { setW(DEF); localStorage.setItem('kis-listw', DEF); });
+
+  // thu nho cua so: giu cot trai trong gioi han
+  window.addEventListener('resize', () => {
+    const cur = parseInt(getComputedStyle(root).getPropertyValue('--listw'), 10);
+    if(Number.isFinite(cur)) setW(clamp(cur));
+  });
+})();
 
 /* ---------- events ---------- */
 function syncTabs(){
