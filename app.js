@@ -10,7 +10,7 @@ async function api(path, opts){
   const r = await fetch(path, opts);
   if(r.status === 401 || r.status === 403){
     const j = await r.json().catch(() => ({}));
-    if(r.status === 401){ location.href = 'login.html?next=' + encodeURIComponent(location.pathname); }
+    if(r.status === 401){ location.href = 'login.html'; }
     throw new Error(j.error || 'không đủ quyền');
   }
   return r;
@@ -30,7 +30,7 @@ function say(sel, text, kind){
 /* Gan thanh dieu huong + kiem tra quyen. adminOnly=true thi day ve hub neu khong phai admin. */
 async function guard(adminOnly){
   if(!TOKEN() || !USER()){
-    location.href = 'login.html?next=' + encodeURIComponent(location.pathname);
+    location.href = 'login.html';
     return null;
   }
   let me;

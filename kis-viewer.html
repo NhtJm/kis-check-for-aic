@@ -122,6 +122,7 @@
   #split:hover,#split.on{background:var(--accent)}
   #right{display:flex;flex-direction:column;min-width:0;min-height:0}
   #stage{flex:1;display:flex;flex-direction:column;min-width:0;overflow-y:auto}
+  .hidden{display:none!important}
   body.resizing{cursor:col-resize;user-select:none}
   body.resizing #player{pointer-events:none}   /* iframe khong cuop chuot khi dang keo */
   body.empty main{grid-template-columns:1fr}
@@ -232,6 +233,8 @@
   <div class="prog"><span id="progtxt">—</span><span class="bar2"><i id="progbar"></i></span></div>
   <div id="who"></div>
   <button class="btn" id="dlmerged">⬇ File gộp</button>
+  <a class="btn" href="hub.html" id="tohub">← Trang chính</a>
+  <button class="btn" id="dologout">Đăng xuất</button>
 </div>
 
 <header>
@@ -951,6 +954,11 @@ async function loadProgress(){
   }catch(e){}
 }
 
+$('#dologout').onclick = () => {
+  localStorage.removeItem('kis-token');
+  localStorage.removeItem('kis-user');
+  location.href = 'login.html';
+};
 $('#subsel').onchange = () => openSub($('#subsel').value);
 $('#whoami').onchange = () => {
   teamWho = $('#whoami').value.trim();
@@ -1005,9 +1013,13 @@ setInterval(() => { if(teamOn && teamSub) loadProgress(); }, 10000);
 function boot(){
 fetch('/api/status', authToken ? {headers:{'X-KIS-Auth': authToken,
       'X-KIS-User': localStorage.getItem('kis-user') || ''}} : {}).then(r => r.json()).then(j => {
-  if(j.auth_required && !j.authed){ location.href = 'login.html?next=/index.html'; return; }
+  if(j.auth_required && !j.authed){ location.href = 'login.html'; return; }
   document.body.classList.remove('locked');
   teamOn = !!j.team;
+  if(!teamOn || !j.auth_required){
+    $('#tohub').classList.add('hidden');
+    $('#dologout').classList.add('hidden');
+  }
   if(teamOn){
     document.body.classList.add('team');
     teamWho = localStorage.getItem('kis-user') || teamWho;

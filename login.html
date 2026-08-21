@@ -19,7 +19,6 @@
 <script src="app.js"></script>
 <script>
 let chosen = localStorage.getItem('kis-user') || '';
-const next = new URLSearchParams(location.search).get('next') || '';
 
 function paint(names){
   const box = S('#pick'); box.innerHTML = '';
@@ -47,7 +46,8 @@ async function login(){
     if(!j.ok){ say('#msg', j.error || 'đăng nhập thất bại', 'err'); S('#go').disabled = false; return; }
     localStorage.setItem('kis-token', j.token);
     localStorage.setItem('kis-user', j.name);
-    location.href = next && next !== '/login.html' ? next : 'hub.html';
+    // Luon ve hub: day la trang tong hop de chon di dau, khong duoc bo qua.
+    location.href = 'hub.html';
   }catch(e){ say('#msg', 'không gọi được server', 'err'); S('#go').disabled = false; }
 }
 S('#go').onclick = login;
