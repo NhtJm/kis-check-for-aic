@@ -40,8 +40,11 @@ echo "da cap quyen Cloud Build cho $SA"
 # chi chua dung nhung gi can -- khong mang videos/, media-info/, .env len.
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-cp "$ROOT"/{serve.py,score_query.py,scorers.py,api_backend.py,query_expand.py,video_cache.py,compare.py} "$TMP/"
+# Copy moi file .py chu khong liet ke tay -- liet ke tay da tung bo sot module moi
+# va lam container chet ngay luc khoi dong (ModuleNotFoundError).
+cp "$ROOT"/*.py "$TMP/"
 cp "$ROOT"/{index.html,kis-viewer.html,media-index.json,requirements.txt,requirements-local.txt} "$TMP/"
+rm -f "$TMP"/build_viewer.py "$TMP"/fetch_videos.py "$TMP"/extract_frames.py
 cp "$ROOT/deploy/Dockerfile.cloudrun" "$TMP/Dockerfile"
 echo "day $(ls "$TMP" | wc -l | tr -d ' ') file de Cloud Build dung image ..."
 

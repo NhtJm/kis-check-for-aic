@@ -11,10 +11,14 @@ import argparse, os, shutil, sys, tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Chi day nhung file Space thuc su can. videos/, media-info/, .env deu khong len.
-FILES = ["serve.py", "score_query.py", "scorers.py", "api_backend.py",
-         "query_expand.py", "video_cache.py", "compare.py",
-         "index.html", "kis-viewer.html", "media-index.json",
-         "requirements.txt", "requirements-local.txt"]
+import glob as _glob
+# Lay moi module .py thay vi liet ke tay -- liet ke tay de bo sot file moi.
+_SKIP = {"build_viewer.py", "fetch_videos.py", "extract_frames.py"}
+FILES = sorted(f for f in (os.path.basename(p) for p in _glob.glob(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "*.py")))
+    if f not in _SKIP) + [
+    "index.html", "kis-viewer.html", "media-index.json",
+    "requirements.txt", "requirements-local.txt"]
 RENAME = {"deploy/Dockerfile.spaces": "Dockerfile",
           "deploy/README-spaces.md": "README.md"}
 
