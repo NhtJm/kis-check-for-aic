@@ -6,6 +6,9 @@
 Neu cho --truth (dong dung), script bao thu hang cua no o tung cau hinh --
 day moi la con so noi len chat luong, chu khong phai diem %.
 """
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+
 import argparse, json, sys
 import score_query as sq
 import scorers

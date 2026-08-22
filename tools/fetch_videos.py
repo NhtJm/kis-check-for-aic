@@ -3,8 +3,9 @@
 import csv, json, os, subprocess, sys
 
 CSV_PATH  = sys.argv[1] if len(sys.argv) > 1 else "/Users/nhatnguyen/Downloads/submission-kis-1.csv"
-MEDIA_DIR = "media-info"
-OUT_DIR   = "videos"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MEDIA_DIR = os.path.join(ROOT, "data", "media-info")
+OUT_DIR   = os.path.join(ROOT, "data", "videos")
 FMT       = os.environ.get("KIS_FMT", "134")   # 134 = 640x360 avc1, mot file
 
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -41,3 +42,6 @@ for i, vid in enumerate(wanted, 1):
 print(f"\nXong: {len(ok)} tai duoc, {len(fail)} that bai")
 for v, why in fail:
     print(f"  {v}: {why}")
+
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))

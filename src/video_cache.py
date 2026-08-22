@@ -17,12 +17,12 @@ def index(root="."):
     global _index
     if _index is not None:
         return _index
-    p = os.path.join(root, "media-index.json")
+    p = os.path.join(root, "web", "media-index.json")
     if os.path.exists(p):
         _index = json.load(open(p, encoding="utf-8"))
         return _index
     _index = {}
-    d = os.path.join(root, "media-info")
+    d = os.path.join(root, "data", "media-info")
     if os.path.isdir(d):
         import re
         for n in os.listdir(d):

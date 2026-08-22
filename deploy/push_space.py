@@ -6,19 +6,21 @@
 
 Script tu tao Space neu chua co, roi day dung nhung file can thiet.
 """
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+
 import argparse, os, shutil, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Chi day nhung file Space thuc su can. videos/, media-info/, .env deu khong len.
 import glob as _glob
-# Lay moi module .py thay vi liet ke tay -- liet ke tay de bo sot file moi.
-_SKIP = {"build_viewer.py", "fetch_videos.py", "extract_frames.py"}
-FILES = sorted(f for f in (os.path.basename(p) for p in _glob.glob(
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "*.py")))
-    if f not in _SKIP) + [
-    "index.html", "kis-viewer.html", "media-index.json",
-    "requirements.txt", "requirements-local.txt"]
+_R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Lay ca thu muc src/ va web/ thay vi liet ke tung file -- liet ke tay da tung
+# bo sot team.py roi bo sot ca 5 trang quan tri.
+FILES = ([os.path.relpath(p, _R) for p in _glob.glob(os.path.join(_R, "src", "*.py"))]
+         + [os.path.relpath(p, _R) for p in _glob.glob(os.path.join(_R, "web", "*"))]
+         + ["requirements.txt", "requirements-local.txt"])
 RENAME = {"deploy/Dockerfile.spaces": "Dockerfile",
           "deploy/README-spaces.md": "README.md"}
 
@@ -49,7 +51,9 @@ def main():
     tmp = tempfile.mkdtemp()
     try:
         for f in FILES:
-            shutil.copy(os.path.join(ROOT, f), os.path.join(tmp, os.path.basename(f)))
+            dst = os.path.join(tmp, f)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy(os.path.join(ROOT, f), dst)
         for src, dst in RENAME.items():
             shutil.copy(os.path.join(ROOT, src), os.path.join(tmp, dst))
         total = sum(os.path.getsize(os.path.join(tmp, f)) for f in os.listdir(tmp))

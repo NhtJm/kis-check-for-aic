@@ -15,10 +15,12 @@ COPY requirements-local.txt requirements.txt ./
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir -r requirements-local.txt
 
-COPY *.py *.html *.css *.js media-index.json ./
+COPY src/ ./src/
+COPY web/ ./web/
 
 # Nap san SigLIP vao image de cold start khong phai tai 1.5GB
 ENV HF_HOME=/app/.cache/huggingface
+ENV PYTHONPATH=/app/src
 RUN python3 -c "import scorers; scorers.get(scorers.SIGLIP); print('siglip da nap san')"
 
 ENV HOST=0.0.0.0 \
@@ -32,4 +34,4 @@ ENV HOST=0.0.0.0 \
     KIS_BUCKET=kis-check-aic-videos
 
 EXPOSE 8080
-CMD ["python3", "serve.py"]
+CMD ["python3", "src/serve.py"]

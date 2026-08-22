@@ -21,13 +21,15 @@ import team
 
 api_backend.load_dotenv()
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# src/ nam trong goc du an -> lui mot cap de lay goc
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WEB  = os.path.join(ROOT, "web")
 _lock = threading.Lock()          # model khong an toan da luong -> cham diem tuan tu
 
 BACKENDS = [b.strip() for b in os.environ.get("KIS_BACKENDS", "siglip,hybrid,api").split(",") if b.strip()]
 FETCH    = os.environ.get("KIS_FETCH", "0") not in ("0", "", "false", "False")
-VIDEODIR = os.environ.get("KIS_VIDEO_DIR", os.path.join(ROOT, "videos"))
-FRAMEDIR = os.environ.get("KIS_FRAME_DIR", os.path.join(ROOT, "frames"))
+VIDEODIR = os.environ.get("KIS_VIDEO_DIR", os.path.join(ROOT, "data", "videos"))
+FRAMEDIR = os.environ.get("KIS_FRAME_DIR", os.path.join(ROOT, "data", "frames"))
 MAXFRAMES = int(os.environ.get("KIS_MAX_FRAMES", "0"))
 PASSWORD = os.environ.get("KIS_PASSWORD", "")
 BUCKET   = os.environ.get("KIS_BUCKET", "")
@@ -57,7 +59,7 @@ def token_for(pw, name=""):
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
-        super().__init__(*a, directory=ROOT, **kw)
+        super().__init__(*a, directory=WEB, **kw)
 
     def log_message(self, fmt, *a):
         if "/api/" in (self.path or ""):

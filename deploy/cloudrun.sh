@@ -42,13 +42,12 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 # Copy moi file .py chu khong liet ke tay -- liet ke tay da tung bo sot module moi
 # va lam container chet ngay luc khoi dong (ModuleNotFoundError).
-cp "$ROOT"/*.py "$TMP/"
+cp -R "$ROOT/src" "$ROOT/web" "$TMP/"
+find "$TMP" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null
 # Lay MOI trang tinh chu khong liet ke tay -- liet ke tay da tung lam thieu
 # team.py, roi lam thieu ca 5 trang quan tri (chung tra 404 sau khi deploy).
-cp "$ROOT"/*.html "$ROOT"/*.css "$ROOT"/*.js "$TMP/" 2>/dev/null
-cp "$ROOT"/{media-index.json,requirements.txt,requirements-local.txt} "$TMP/"
-rm -f "$TMP/viewer_template.html"          # chi la ban mau, khong can tren server
-rm -f "$TMP"/build_viewer.py "$TMP"/fetch_videos.py "$TMP"/extract_frames.py
+cp "$ROOT"/{requirements.txt,requirements-local.txt} "$TMP/"
+
 cp "$ROOT/deploy/Dockerfile.cloudrun" "$TMP/Dockerfile"
 echo "day $(ls "$TMP" | wc -l | tr -d ' ') file de Cloud Build dung image ..."
 

@@ -31,7 +31,8 @@ PROMPT = (
 
 def load_dotenv(path=None):
     """Doc file .env canh script vao os.environ. Khong ghi de bien da co san."""
-    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = path or os.path.join(root, ".env")
     if not os.path.exists(path):
         return False
     with open(path, encoding="utf-8") as f:

@@ -80,7 +80,8 @@ class GcsStore:
 def make_store(bucket=None, local_root=None):
     if bucket:
         return GcsStore(bucket)
-    return LocalStore(local_root or os.path.join(os.path.dirname(os.path.abspath(__file__)), "teamdata"))
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return LocalStore(local_root or os.path.join(root, "data", "teamdata"))
 
 
 # ---------- doc CSV ----------

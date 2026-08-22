@@ -13,9 +13,12 @@ chi CHAM DIEM moi can, vi cham diem can pixel that.
     python3 sync_frames.py --from-server           # lay moi submission tren server
     python3 sync_frames.py --from-server --dry-run # chi xem thieu gi
 """
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+
 import argparse, csv, json, os, subprocess, sys, urllib.request, urllib.error
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUCKET = os.environ.get("KIS_BUCKET", "kis-check-aic-videos")
 URL = os.environ.get("KIS_URL", "https://kis-check-for-aic-850237628890.asia-southeast1.run.app")
 
@@ -104,19 +107,19 @@ def main():
     with open(tmp, "w") as f:
         for v in missing:
             f.write(f"{v},0\n")
-    r = subprocess.run([sys.executable, "fetch_videos.py", tmp], cwd=ROOT)
+    r = subprocess.run([sys.executable, "tools/fetch_videos.py", tmp], cwd=ROOT)
     if r.returncode != 0:
         print("   tai video that bai"); sys.exit(1)
 
     print("\n4) trich frame")
     src = a.csv or tmp
-    r = subprocess.run([sys.executable, "extract_frames.py", "--csv", src,
+    r = subprocess.run([sys.executable, "tools/extract_frames.py", "--csv", src,
                         "--window", str(a.window), "--step", str(a.step)], cwd=ROOT)
     if r.returncode != 0:
         print("   trich frame that bai"); sys.exit(1)
 
     print("\n5) day len bucket")
-    r = subprocess.run(f"gcloud storage rsync frames gs://{BUCKET}/frames --recursive",
+    r = subprocess.run(f"gcloud storage rsync data/frames gs://{BUCKET}/frames --recursive",
                        shell=True, cwd=ROOT)
     os.remove(tmp)
     if r.returncode != 0:

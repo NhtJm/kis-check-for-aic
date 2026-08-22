@@ -9,6 +9,9 @@ phu thuoc vao viec tai duoc tu YouTube.
 
 Trich o cua so rong nhat ban dinh dung; cua so hep hon khi cham la tap con.
 """
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+
 import argparse, csv, os, sys, collections
 
 def read_submission(path):
@@ -23,8 +26,9 @@ def main():
     ap.add_argument("--csv", required=True)
     ap.add_argument("--window", type=int, default=90)
     ap.add_argument("--step", type=int, default=30)
-    ap.add_argument("--videos", default="videos")
-    ap.add_argument("--out", default="frames")
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ap.add_argument("--videos", default=os.path.join(ROOT, "data", "videos"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "frames"))
     ap.add_argument("--quality", type=int, default=85)
     a = ap.parse_args()
 

@@ -18,12 +18,14 @@ COPY --chown=user requirements-local.txt requirements.txt ./
 RUN pip install --no-cache-dir --user torch --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir --user -r requirements-local.txt
 
-COPY --chown=user *.py index.html kis-viewer.html media-index.json ./
+COPY --chown=user src/ ./src/
+COPY --chown=user web/ ./web/
 
 # Nap san SigLIP luc build de lan chay dau khong phai cho tai model
 RUN python3 -c "import scorers; scorers.get(scorers.SIGLIP); print('siglip da nap san')"
 
-ENV HOST=0.0.0.0 \
+ENV PYTHONPATH=/home/user/app/src \
+    HOST=0.0.0.0 \
     PORT=7860 \
     KIS_BACKENDS=siglip,hybrid,api \
     KIS_FETCH=1 \
@@ -32,4 +34,4 @@ ENV HOST=0.0.0.0 \
     KIS_MAX_FRAMES=350
 
 EXPOSE 7860
-CMD ["python3", "serve.py"]
+CMD ["python3", "src/serve.py"]

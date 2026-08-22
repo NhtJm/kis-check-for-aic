@@ -15,7 +15,7 @@ import argparse, csv, json, os, sys, math
 import numpy as np
 
 MODEL_ID  = "google/siglip-base-patch16-256-multilingual"
-VIDEO_DIR = "videos"
+VIDEO_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "videos")
 
 
 # ---------- doc frame ----------

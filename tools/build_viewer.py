@@ -9,11 +9,15 @@ bat ky file CSV submission nao ngay trong trinh duyet.
 Tham so thu 3 la tuy chon: neu co, CSV do duoc nap san khi mo trang.
 Them --no-check de bo qua buoc hoi YouTube xem video con song khong.
 """
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+
 import json, os, re, sys, csv, urllib.request, urllib.error
 
 args      = [a for a in sys.argv[1:] if not a.startswith("--")]
-MEDIA_DIR = args[0] if len(args) > 0 else "media-info"
-OUT_PATH  = args[1] if len(args) > 1 else "kis-viewer.html"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MEDIA_DIR = args[0] if len(args) > 0 else os.path.join(ROOT, "data", "media-info")
+OUT_PATH  = args[1] if len(args) > 1 else os.path.join(ROOT, "web", "index.html")
 INIT_CSV  = args[2] if len(args) > 2 else None
 DEFAULT_FPS = 30
 
@@ -79,16 +83,16 @@ if INIT_CSV:
 
 payload = {"fps": DEFAULT_FPS, "media": index, "initial": initial, "status": status}
 
-template = open("viewer_template.html", encoding="utf-8").read()
+template = open(os.path.join(ROOT, "templates", "viewer_template.html"), encoding="utf-8").read()
 html = template.replace("__PAYLOAD__", json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 open(OUT_PATH, "w", encoding="utf-8").write(html)
 
 # index gon mot file de server dung khi deploy (media-info/ khong len git)
-with open("media-index.json", "w", encoding="utf-8") as f:
+with open(os.path.join(ROOT, "web", "media-index.json"), "w", encoding="utf-8") as f:
     json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
 
 print(f"Da tao {OUT_PATH}  ({len(html)/1024:.0f} KB)")
-print(f"Da tao media-index.json  ({os.path.getsize('media-index.json')/1024:.0f} KB)")
+print(f"Da tao web/media-index.json  ({os.path.getsize(os.path.join(ROOT,'web','media-index.json'))/1024:.0f} KB)")
 print(f"  index: {len(index)} video tu {MEDIA_DIR}/")
 if initial:
     print(f"  nap san: {initial['source']} ({len(initial['rows'])} entry)")

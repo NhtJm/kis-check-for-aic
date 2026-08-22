@@ -8,6 +8,9 @@ that thay vi doan. Chay cai nay truoc khi cham ca submission.
     python3 deploy/test_api.py --list     # xem model nao dung duoc
     python3 deploy/test_api.py --model gpt-4o-mini
 """
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+
 import argparse, json, os, sys, urllib.request, urllib.error
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import api_backend
